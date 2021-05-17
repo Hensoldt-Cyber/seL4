@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
 
 /* Copyright (c) 2010-2017, The Regents of the University of California
- * (Regents).  All Rights Reserved.
+ *                          (Regents).  All Rights Reserved.
+ * Copyright 2021, HENSOLDT Cyber
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -32,9 +33,26 @@
 
 #pragma once
 
+#if defined(CONFIG_RISCV_SBI_NONE)
+/* nothing here if there is no SBI */
+#else
+
+/* actually, we should not check for specific SBI implementation here, but
+ * specific SBI interfaces, as it does not matter what SBI implementation is
+ * running on a platform
+ */
+#if !defined(CONFIG_RISCV_SBI_OPENSBI) \
+    && !defined(CONFIG_RISCV_SBI_BBL) \
+    && !defined(CONFIG_RISCV_SBI_ROM)
+#error Unknown SBI implementation
+#endif
 
 #include <stdint.h>
 
+/* See https://github.com/riscv/riscv-sbi-doc/blob/master/riscv-sbi.adoc for
+ * details about these command codes, they are the "legacy extensions"
+ * introduced by BBL and supported by OpenSBI
+ */
 #define SBI_SET_TIMER 0
 #define SBI_CONSOLE_PUTCHAR 1
 #define SBI_CONSOLE_GETCHAR 2
@@ -44,6 +62,7 @@
 #define SBI_REMOTE_SFENCE_VMA 6
 #define SBI_REMOTE_SFENCE_VMA_ASID 7
 #define SBI_SHUTDOWN 8
+/* values 9 - 15 are reserved */
 
 static inline word_t sbi_call(word_t cmd,
                               word_t arg_0,
@@ -121,3 +140,4 @@ static inline void sbi_remote_sfence_vma_asid(const unsigned long *hart_mask,
     SBI_CALL_1(SBI_REMOTE_SFENCE_VMA_ASID, (word_t)hart_mask);
 }
 
+#endif /* not defined(CONFIG_RISCV_SBI_NONE) */
