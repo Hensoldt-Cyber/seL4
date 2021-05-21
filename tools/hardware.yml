@@ -217,3 +217,5 @@ devices:
       - fsl,imx6sx-src
   - compatible:
       - xlnx,zynq-reset
+  - compatible:
+      - arm,cortex-a72
