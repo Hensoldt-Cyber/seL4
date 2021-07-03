@@ -27,6 +27,31 @@ BOOT_BSS static volatile word_t node_boot_lock;
 #define MAX_RESERVED 3
 BOOT_BSS static region_t res_reg[MAX_RESERVED];
 
+/* If extra_bi_size is 0, then just calculate the extra boot info size.
+ * Otherwise populate the extra boot info.
+ */
+BOOT_CODE static word_t populate_extra_bi(word_t extra_bi_size,
+                                          void *dtb, uint32_t dtb_size)
+{
+    uintptr_t bi = (0 == extra_bi_size) ? 0 : rootserver.extra_bi;
+    pptr_t offset = 0;
+
+    /* if there is a DTB, put it in the extra bootinfo block */
+    if ((NULL != dtb) && (0 != dtb_size)) {
+        offset += add_extra_bootinfo(bi ? (void *)(bi + offset) : NULL,
+                                     SEL4_BOOTINFO_HEADER_FDT,
+                                     dtb, dtb_size);
+    }
+
+    /* provide a chunk for any leftover padding */
+    if (extra_bi_size > offset) {
+        add_extra_bootinfo_padding(bi ? (void *)(bi + offset) : NULL,
+                                   extra_bi_size - offset);
+    }
+
+    return offset;
+}
+
 BOOT_CODE static bool_t create_untypeds(cap_t root_cnode_cap, region_t boot_mem_reuse_reg)
 {
     seL4_SlotPos   slot_pos_before;
@@ -204,7 +229,6 @@ static BOOT_CODE bool_t try_init_kernel(
         ui_p_reg_start, ui_p_reg_end
     });
     word_t extra_bi_size = 0;
-    pptr_t extra_bi_offset = 0;
     vptr_t extra_bi_frame_vptr;
     vptr_t bi_frame_vptr;
     vptr_t ipcbuf_vptr;
@@ -257,8 +281,10 @@ static BOOT_CODE bool_t try_init_kernel(
             .start = dtb_p_start,
             .end   = dtb_p_end
         };
-        extra_bi_size += sizeof(seL4_BootInfoHeader) + dtb_size;
     }
+
+    /* calculate the extra boot info size */
+    word_t extra_bi_size = populate_extra_bi(0, NULL, dtb_size);
     word_t extra_bi_size_bits = calculate_extra_bi_size_bits(extra_bi_size);
 
     /* The region of the initial thread is the user image + ipcbuf + boot info + extra */
@@ -287,26 +313,8 @@ static BOOT_CODE bool_t try_init_kernel(
 
     /* create the bootinfo frame */
     populate_bi_frame(0, CONFIG_MAX_NUM_NODES, ipcbuf_vptr, extra_bi_size);
-
-    /* put DTB in the bootinfo block, if present. */
-    seL4_BootInfoHeader header;
-    if (dtb_size > 0) {
-        header.id = SEL4_BOOTINFO_HEADER_FDT;
-        header.len = sizeof(header) + dtb_size;
-        *(seL4_BootInfoHeader *)(rootserver.extra_bi + extra_bi_offset) = header;
-        extra_bi_offset += sizeof(header);
-        memcpy((void *)(rootserver.extra_bi + extra_bi_offset),
-               paddr_to_pptr(dtb_p_reg.start),
-               dtb_size);
-        extra_bi_offset += dtb_size;
-    }
-
-    if (extra_bi_size > extra_bi_offset) {
-        /* provide a chunk for any leftover padding in the extended boot info */
-        header.id = SEL4_BOOTINFO_HEADER_PADDING;
-        header.len = (extra_bi_size - extra_bi_offset);
-        *(seL4_BootInfoHeader *)(rootserver.extra_bi + extra_bi_offset) = header;
-    }
+    (void)populate_extra_bi(extra_bi_size, paddr_to_pptr(dtb_p_reg.start),
+                            dtb_size);
 
     /* Construct an initial address space with enough virtual addresses
      * to cover the user image + ipc buffer and bootinfo frames */
