@@ -118,36 +118,6 @@ extern char trap_entry[1];
 
 /* This and only this function initialises the CPU. It does NOT initialise any kernel state. */
 
-#ifdef CONFIG_HAVE_FPU
-BOOT_CODE static void init_fpu(void)
-{
-    set_fs_clean();
-    write_fcsr(0);
-    disableFpu();
-}
-#endif
-
-BOOT_CODE static void init_cpu(void)
-{
-
-    activate_kernel_vspace();
-    /* Write trap entry address to stvec */
-    write_stvec((word_t)trap_entry);
-    initLocalIRQController();
-#ifndef CONFIG_KERNEL_MCS
-    initTimer();
-#endif
-
-    /* disable FPU access */
-    set_fs_off();
-
-#ifdef CONFIG_HAVE_FPU
-    init_fpu();
-#endif
-}
-
-
-#endif
 /* Main kernel initialisation function. */
 
 static BOOT_CODE bool_t try_init_kernel(
@@ -379,26 +349,82 @@ BOOT_CODE VISIBLE NORETURN void init_kernel(
 #endif
 )
 {
-    paddr_t dtb_end_p = 0;
-
-    if (dtb_addr_p) {
-        dtb_end_p = dtb_addr_p + dtb_size;
-    }
 
 #ifdef ENABLE_SMP_SUPPORT
-
+    bool_t is_primary_core = (0 == core_id)
     add_hart_to_core_map(hart_id, core_id);
+#else
+    bool_t is_primary_core = true;
+#endif
 
-    if (0 == core_id) {
-
-#endif /* ENABLE_SMP_SUPPORT */
+    /* We are started with the MMU enables and a 1:1 in place. Prepare our
+     * own MMU tables on the primary core, the secondary cores can just used
+     * them when they are released.
+     */
+    if (is_primary_core) {
 
         map_kernel_window();
-        init_cpu();
+
+    } else {
+#ifdef ENABLE_SMP_SUPPORT
+
+        /* Stall booting on the secondary cores until the primary core releases
+         * them. There are smarter ways than polling a volatile variable, but
+         * for now this works well enough.
+         */
+        while (!node_boot_lock) {
+            /* busy loop. Should we put some fence here that guaranteed no
+             * instruction reordering will happen?
+             */
+        }
+
+        /* The barrier here ensure no loads can happen before we cross this
+         * point, ie before the primary core has release us */
+        fence_r_rw();
+
+        /* The primary core has initialized the MMU tables, we can simply use
+         * them on the secondary cores. It has also initialized the platform and
+         * its peripherals, so there is nothing to do here besides the core
+         * initialization.
+         */
+
+#endif /* ENABLE_SMP_SUPPORT */
+    }
+#endif
+
+    /* Initialize the local code, this is completely agnostic of any SMP.*/
+
+    /* activate our own MMU tables */
+    activate_kernel_vspace();
+
+    /* Write trap entry address to stvec */
+    write_stvec((word_t)trap_entry);
+
+    initLocalIRQController();
+
+#ifndef CONFIG_KERNEL_MCS
+    initTimer();
+#endif
+
+    /* ensure FPU is disbaled by default */
+    set_fs_off();
+#ifdef CONFIG_HAVE_FPU
+    set_fs_clean();
+    write_fcsr(0);
+    disableFpu();
+#endif
+
+    /* local core init is finished, continue SMP boot. */
+
+    if (is_primary_core) {
+
+        /* Initialize platform and its peripherals. */
         initIRQController();
+
         printf("Bootstrapping kernel\n");
         if (!try_init_kernel(ui_p_reg_start, ui_p_reg_end, pv_offset, v_entry,
-                             dtb_addr_p, dtb_end_p)) {
+                             dtb_addr_p,
+                             (0 == dtb_addr_p) ? 0 : dtb_addr_p + dtb_size) {
             fail("ERROR: Kernel init failed");
             UNREACHABLE();
         }
@@ -406,49 +432,62 @@ BOOT_CODE VISIBLE NORETURN void init_kernel(
 
 #ifdef ENABLE_SMP_SUPPORT
 
-        /* initialize BKL before booting up other cores */
+        /* Initialize BKL, but do not acquire it. */
         clh_lock_init();
-        /* release secondary cores */
+
+        printf("Primary core (hart %d) releases secondary cores\n", hart_id);
+        /* ToDo: If SB implemented the HSM extension, consider use this instead
+         *       of managing the cores manually.
+         */
         node_boot_lock = 1;
-        fence_w_r();
-        while (ksNumCPUs != CONFIG_MAX_NUM_NODES) {
+        fence_w_r(); /* ensure the update of node_boot_lock becomes visible */
+
+        /* Wait for secondary cores to finish booting. Since ksNumCPUs is not
+         * declared as volatile, looping over a memory release/acquire fence
+         * will ensure we get all updates.
+         */
+        while ( (volatile)ksNumCPUs != CONFIG_MAX_NUM_NODES) {
             __atomic_signal_fence(__ATOMIC_ACQ_REL);
         }
-        /* All cores are up now, so there can be concurrency. The kernel booting
-         * is supposed to be finished before the secondary cores are released,
-         * all the primary has to do now is schedule the initial thread.
-         * Currently there is nothing that touches any global data structures,
-         * nevertheless we grab the BKL here to play safe. It ensure the boot
-         * messages are not scrambled. The BKL is released when the kernel is
-         * left.
+
+        /* there is no need to grab the BKL here, because all we do now is exit
+         * to user space. We just grab it to play save and ensure the log
+         * messages are not intermixing.
          */
-        NODE_LOCK_SYS;
+         NODE_LOCK_SYS;
 
 #endif /* ENABLE_SMP_SUPPORT */
 
         printf("Booting all finished, dropped to user space\n");
 
-#ifdef ENABLE_SMP_SUPPORT
-
     } else {
 
-        while (!node_boot_lock); /* wait for primary core to release us */
-        fence_r_rw();
+#ifdef ENABLE_SMP_SUPPORT
 
-        init_cpu();
+        /* Grab the BKL for secondary core initialization, it is released when
+         * the kernel is left.
+         */
         NODE_LOCK_SYS;
+
+        printf("Bootstrapping kernel on secondary core %d (hart %d)",
+               core_id, hart_id);
+
         ksNumCPUs++;
         init_core_state(SchedulerAction_ResumeCurrentThread);
-        ifence_local();
 
-    }
+        ifence_local(); /* ToDo: add explanation why we need this fence. */
+
+        printf("Booting on secondary core %d (hart %d) finished, "
+               "dropped to user space\n", core_id, hart_id);
 
 #endif /* ENABLE_SMP_SUPPORT */
 
-#ifdef CONFIG_KERNEL_MCS
-    NODE_STATE(ksCurTime) = getCurrentTime();
-    NODE_STATE(ksConsumed) = 0;
-#endif
+    }
+
+    #ifdef CONFIG_KERNEL_MCS
+        NODE_STATE(ksCurTime) = getCurrentTime();
+        NODE_STATE(ksConsumed) = 0;
+    #endif
 
     schedule();
     activateThread();
