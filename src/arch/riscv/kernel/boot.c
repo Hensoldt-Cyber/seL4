@@ -146,39 +146,6 @@ BOOT_CODE static void init_cpu(void)
 #endif
 }
 
-/* This and only this function initialises the platform. It does NOT initialise any kernel state. */
-
-BOOT_CODE static void init_plat(void)
-{
-    initIRQController();
-}
-
-
-#ifdef ENABLE_SMP_SUPPORT
-BOOT_CODE static bool_t try_init_kernel_secondary_core(word_t hart_id, word_t core_id)
-{
-    while (!node_boot_lock);
-
-    fence_r_rw();
-
-    init_cpu();
-    NODE_LOCK_SYS;
-
-    ksNumCPUs++;
-    init_core_state(SchedulerAction_ResumeCurrentThread);
-    ifence_local();
-    return true;
-}
-
-BOOT_CODE static void release_secondary_cores(void)
-{
-    node_boot_lock = 1;
-    fence_w_r();
-
-    while (ksNumCPUs != CONFIG_MAX_NUM_NODES) {
-        __atomic_signal_fence(__ATOMIC_ACQ_REL);
-    }
-}
 
 #endif
 /* Main kernel initialisation function. */
@@ -241,16 +208,6 @@ static BOOT_CODE bool_t try_init_kernel(
     /* The region of the initial thread is the user image + ipcbuf + boot info + extra */
     it_v_reg.start = ui_v_reg.start;
     it_v_reg.end = extra_bi_frame_vptr + BIT(extra_bi_size_bits);
-
-    map_kernel_window();
-
-    /* initialise the CPU */
-    init_cpu();
-
-    printf("Bootstrapping kernel\n");
-
-    /* initialize the platform */
-    init_plat();
 
     /* make the free memory available to alloc_region() */
     if (!arch_init_freemem(ui_reg, it_v_reg, dtb_reg, extra_bi_size_bits)) {
@@ -404,19 +361,7 @@ static BOOT_CODE bool_t try_init_kernel(
     /* finalise the bootinfo frame */
     bi_finalise();
 
-    ksNumCPUs = 1;
-
-    SMP_COND_STATEMENT(clh_lock_init());
-    SMP_COND_STATEMENT(release_secondary_cores());
-
-    /* All cores are up now, so there can be concurrency. The kernel booting is
-     * supposed to be finished before the secondary cores are released, all the
-     * primary has to do now is schedule the initial thread. Currently there is
-     * nothing that touches any global data structures, nevertheless we grab the
-     * BKL here to play safe. It is released when the kernel is left. */
-    NODE_LOCK_SYS;
-
-    printf("Booting all finished, dropped to user space\n");
+    /* kernel successfully initialized */
     return true;
 }
 
@@ -434,7 +379,6 @@ BOOT_CODE VISIBLE NORETURN void init_kernel(
 #endif
 )
 {
-    bool_t result;
     paddr_t dtb_end_p = 0;
 
     if (dtb_addr_p) {
@@ -442,29 +386,64 @@ BOOT_CODE VISIBLE NORETURN void init_kernel(
     }
 
 #ifdef ENABLE_SMP_SUPPORT
+
     add_hart_to_core_map(hart_id, core_id);
-    if (core_id == 0) {
-        result = try_init_kernel(ui_p_reg_start,
-                                 ui_p_reg_end,
-                                 pv_offset,
-                                 v_entry,
-                                 dtb_addr_p,
-                                 dtb_end_p);
+
+    if (0 == core_id) {
+
+#endif /* ENABLE_SMP_SUPPORT */
+
+        map_kernel_window();
+        init_cpu();
+        initIRQController();
+        printf("Bootstrapping kernel\n");
+        if (!try_init_kernel(ui_p_reg_start, ui_p_reg_end, pv_offset, v_entry,
+                             dtb_addr_p, dtb_end_p)) {
+            fail("ERROR: Kernel init failed");
+            UNREACHABLE();
+        }
+        ksNumCPUs = 1;
+
+#ifdef ENABLE_SMP_SUPPORT
+
+        /* initialize BKL before booting up other cores */
+        clh_lock_init();
+        /* release secondary cores */
+        node_boot_lock = 1;
+        fence_w_r();
+        while (ksNumCPUs != CONFIG_MAX_NUM_NODES) {
+            __atomic_signal_fence(__ATOMIC_ACQ_REL);
+        }
+        /* All cores are up now, so there can be concurrency. The kernel booting
+         * is supposed to be finished before the secondary cores are released,
+         * all the primary has to do now is schedule the initial thread.
+         * Currently there is nothing that touches any global data structures,
+         * nevertheless we grab the BKL here to play safe. It ensure the boot
+         * messages are not scrambled. The BKL is released when the kernel is
+         * left.
+         */
+        NODE_LOCK_SYS;
+
+#endif /* ENABLE_SMP_SUPPORT */
+
+        printf("Booting all finished, dropped to user space\n");
+
+#ifdef ENABLE_SMP_SUPPORT
+
     } else {
-        result = try_init_kernel_secondary_core(hart_id, core_id);
+
+        while (!node_boot_lock); /* wait for primary core to release us */
+        fence_r_rw();
+
+        init_cpu();
+        NODE_LOCK_SYS;
+        ksNumCPUs++;
+        init_core_state(SchedulerAction_ResumeCurrentThread);
+        ifence_local();
+
     }
-#else
-    result = try_init_kernel(ui_p_reg_start,
-                             ui_p_reg_end,
-                             pv_offset,
-                             v_entry,
-                             dtb_addr_p,
-                             dtb_end_p);
-#endif
-    if (!result) {
-        fail("ERROR: kernel init failed");
-        UNREACHABLE();
-    }
+
+#endif /* ENABLE_SMP_SUPPORT */
 
 #ifdef CONFIG_KERNEL_MCS
     NODE_STATE(ksCurTime) = getCurrentTime();
@@ -473,6 +452,6 @@ BOOT_CODE VISIBLE NORETURN void init_kernel(
 
     schedule();
     activateThread();
-    restore_user_context();
+    restore_user_context(); /* Will also release the BKL if held. */
     UNREACHABLE();
 }

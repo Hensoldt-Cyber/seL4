@@ -232,76 +232,6 @@ BOOT_CODE static bool_t init_cpu(void)
     return true;
 }
 
-/* This and only this function initialises the platform. It does NOT initialise any kernel state. */
-
-BOOT_CODE static void init_plat(void)
-{
-    initIRQController();
-    initL2Cache();
-#ifdef CONFIG_ARM_SMMU
-    plat_smmu_init();
-#endif
-}
-
-#ifdef ENABLE_SMP_SUPPORT
-BOOT_CODE static bool_t try_init_kernel_secondary_core(void)
-{
-    unsigned i;
-
-    /* need to first wait until some kernel init has been done */
-    while (!node_boot_lock);
-
-    /* Perform cpu init */
-    init_cpu();
-
-    for (i = 0; i < NUM_PPI; i++) {
-        maskInterrupt(true, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), i));
-    }
-    setIRQState(IRQIPI, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), irq_remote_call_ipi));
-    setIRQState(IRQIPI, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), irq_reschedule_ipi));
-    /* Enable per-CPU timer interrupts */
-    setIRQState(IRQTimer, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), KERNEL_TIMER_IRQ));
-#ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
-    setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), INTERRUPT_VGIC_MAINTENANCE));
-    setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), INTERRUPT_VTIMER_EVENT));
-#endif /* CONFIG_ARM_HYPERVISOR_SUPPORT */
-    NODE_LOCK_SYS;
-
-    ksNumCPUs++;
-
-    init_core_state(SchedulerAction_ResumeCurrentThread);
-
-    return true;
-}
-
-BOOT_CODE static void release_secondary_cpus(void)
-{
-
-    /* release the cpus at the same time */
-    node_boot_lock = 1;
-
-#ifndef CONFIG_ARCH_AARCH64
-    /* At this point in time the other CPUs do *not* have the seL4 global pd set.
-     * However, they still have a PD from the elfloader (which is mapping mmemory
-     * as strongly ordered uncached, as a result we need to explicitly clean
-     * the cache for it to see the update of node_boot_lock
-     *
-     * For ARMv8, the elfloader sets the page table entries as inner shareable
-     * (so is the attribute of the seL4 global PD) when SMP is enabled, and
-     * turns on the cache. Thus, we do not need to clean and invaliate the cache.
-     */
-    cleanInvalidateL1Caches();
-    plat_cleanInvalidateL2Cache();
-#endif
-
-    /* Wait until all the secondary cores are done initialising */
-    while (ksNumCPUs != CONFIG_MAX_NUM_NODES) {
-        /* perform a memory release+acquire to get new values of ksNumCPUs */
-        __atomic_signal_fence(__ATOMIC_ACQ_REL);
-    }
-}
-#endif /* ENABLE_SMP_SUPPORT */
-
 /* Main kernel initialisation function. */
 
 static BOOT_CODE bool_t try_init_kernel(
@@ -363,21 +293,6 @@ static BOOT_CODE bool_t try_init_kernel(
         printf("ERROR: userland image virtual end address too high\n");
         return false;
     }
-
-    /* setup virtual memory for the kernel */
-    map_kernel_window();
-
-    /* initialise the CPU */
-    if (!init_cpu()) {
-        printf("ERROR: CPU init failed\n");
-        return false;
-    }
-
-    /* debug output via serial port is only available from here */
-    printf("Bootstrapping kernel\n");
-
-    /* initialise the platform */
-    init_plat();
 
     if (!arch_init_freemem(ui_p_reg, dtb_p_reg, it_v_reg, extra_bi_size_bits)) {
         printf("ERROR: free memory management initialization failed\n");
@@ -553,31 +468,6 @@ static BOOT_CODE bool_t try_init_kernel(
     /* finalise the bootinfo frame */
     bi_finalise();
 
-    /* make everything written by the kernel visible to userland. Cleaning to
-     * PoC is not strictly neccessary, but performance is not critical here so
-     * clean and invalidate everything to PoC
-     */
-    cleanInvalidateL1Caches();
-    invalidateLocalTLB();
-    if (config_set(CONFIG_ARM_HYPERVISOR_SUPPORT)) {
-        invalidateHypTLB();
-    }
-
-    ksNumCPUs = 1;
-
-    /* initialize BKL before booting up other cores */
-    SMP_COND_STATEMENT(clh_lock_init());
-    SMP_COND_STATEMENT(release_secondary_cpus());
-
-    /* All cores are up now, so there can be concurrency. The kernel booting is
-     * supposed to be finished before the secondary cores are released, all the
-     * primary has to do now is schedule the initial thread. Currently there is
-     * nothing that touches any global data structures, nevertheless we grab the
-     * BKL here to play safe. It is released when the kernel is left. */
-    NODE_LOCK_SYS;
-
-    printf("Booting all finished, dropped to user space\n");
-
     /* kernel successfully initialized */
     return true;
 }
@@ -599,35 +489,126 @@ BOOT_CODE VISIBLE NORETURN void init_kernel(
     }
 
 #ifdef ENABLE_SMP_SUPPORT
-    /* we assume there exists a cpu with id 0 and will use it for bootstrapping */
-    if (getCurrentCPUIndex() == 0) {
-        result = try_init_kernel(ui_p_reg_start,
-                                 ui_p_reg_end,
-                                 pv_offset,
-                                 v_entry,
-                                 dtb_addr_p, dtb_end_p);
-    } else {
-        result = try_init_kernel_secondary_core();
-    }
 
-#else
-    result = try_init_kernel(ui_p_reg_start,
-                             ui_p_reg_end,
-                             pv_offset,
-                             v_entry,
-                             dtb_addr_p, dtb_end_p);
+    /* we assume there is a cpu with id 0 and will use it for bootstrapping */
+    if (0 == getCurrentCPUIndex()) {
 
 #endif /* ENABLE_SMP_SUPPORT */
 
-    if (!result) {
-        fail("ERROR: kernel init failed");
-        UNREACHABLE();
+        /* setup virtual memory for the kernel */
+        map_kernel_window();
+
+        /* initialise the CPU */
+        if (!init_cpu()) {
+            fail("ERROR: CPU init failed");
+            UNREACHABLE();
+        }
+        initIRQController();
+        initL2Cache();
+#ifdef CONFIG_ARM_SMMU
+        plat_smmu_init();
+#endif
+        /* debug output via serial port is only available from here */
+        printf("Bootstrapping kernel\n");
+        if (!try_init_kernel(ui_p_reg_start, ui_p_reg_end, pv_offset, v_entry,
+                             dtb_addr_p, dtb_end_p)) {
+            fail("ERROR: Kernel init failed");
+            UNREACHABLE();
+        }
+
+        /* make everything written by the kernel visible to userland. Cleaning
+         * to PoC is not strictly neccessary, but performance is not critical
+         * here so clean and invalidate everything to PoC
+         */
+        cleanInvalidateL1Caches();
+        invalidateLocalTLB();
+        if (config_set(CONFIG_ARM_HYPERVISOR_SUPPORT)) {
+            invalidateHypTLB();
+        }
+
+        ksNumCPUs = 1;
+
+#ifdef ENABLE_SMP_SUPPORT
+
+        /* initialize BKL before booting up other cores */
+        clh_lock_init();
+        /* release secondary cores */
+        node_boot_lock = 1;
+
+#ifdef CONFIG_ARCH_AARCH32
+        /* At this point in time the other CPUs do *not* have the seL4 global pd
+         * set, they still have a PD from the previous boot loader. In case of
+         * the ELF-Loader the memory mapping is strongly ordered uncached and we
+         * need to explicitly clean the cache for it to see the update of
+         * node_boot_lock. For ARMv8, the ELF-Loader sets the page table entries
+         * as inner shareable (so is the attribute of the seL4 global PD) when
+         * SMP is enabled, and turns on the cache. Thus, we do not need to clean
+         * and invaliate the cache.
+         */
+        cleanInvalidateL1Caches();
+        plat_cleanInvalidateL2Cache();
+#endif /* CONFIG_ARCH_AARCH32 */
+
+        /* Wait until all the secondary cores are done initialising */
+        while (ksNumCPUs != CONFIG_MAX_NUM_NODES) {
+            /* perform a memory release+acquire to get new values of ksNumCPUs */
+            __atomic_signal_fence(__ATOMIC_ACQ_REL);
+        }
+
+        /* All cores are up now, so there can be concurrency. The kernel booting
+         * is supposed to be finished before the secondary cores are released,
+         * all the primary has to do now is schedule the initial thread.
+         * Currently there is nothing that touches any global data structures,
+         * nevertheless we grab the BKL here to play safe. It is released when
+         * the kernel is left.
+         */
+        NODE_LOCK_SYS;
+
+#endif /* ENABLE_SMP_SUPPORT */
+
+        printf("Booting all finished, dropped to user space\n");
+
+#ifdef ENABLE_SMP_SUPPORT
+
+    } else {
+
+        /* need to first wait until some kernel init has been done */
+        while (!node_boot_lock);
+
+        /* Perform cpu init */
+        if (!init_cpu()) {
+            fail("ERROR: CPU init failed");
+            UNREACHABLE();
+        }
+
+        for (unsigned int i = 0; i < NUM_PPI; i++) {
+            maskInterrupt(true, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), i));
+        }
+
+        setIRQState(IRQIPI, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), irq_remote_call_ipi));
+        setIRQState(IRQIPI, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), irq_reschedule_ipi));
+        /* Enable per-CPU timer interrupts */
+        setIRQState(IRQTimer, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), KERNEL_TIMER_IRQ));
+#ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
+
+        setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), INTERRUPT_VGIC_MAINTENANCE));
+        setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), INTERRUPT_VTIMER_EVENT));
+#endif /* CONFIG_ARM_HYPERVISOR_SUPPORT */
+
+        NODE_LOCK_SYS;
+        ksNumCPUs++;
+        init_core_state(SchedulerAction_ResumeCurrentThread);
+
     }
+
+#endif /* ENABLE_SMP_SUPPORT */
+
 
 #ifdef CONFIG_KERNEL_MCS
     NODE_STATE(ksCurTime) = getCurrentTime();
     NODE_STATE(ksConsumed) = 0;
 #endif
+
     schedule();
     activateThread();
     restore_user_context();
