@@ -161,7 +161,8 @@ BOOT_CODE static void populate_boot_info(pptr_t bi_pptr,
     }
 
     /* Update boot info frame with the actual amount of extra data. */
-    BI_PTR(rootserver.boot_info)->extraLen = extra_bi - reg_extra_bi.start;
+    seL4_BootInfo *bi = (seL4_BootInfo *)rootserver.boot_info;
+    bi->extraLen = extra_bi - reg_extra_bi.start;
 
     /* If there is unused space left in the extra boot info region, on x86 a
      * padding chunk is put there. Maybe that happens for very old legacy

@@ -341,7 +341,7 @@ BOOT_CODE void populate_bi_frame(node_id_t node_id, word_t num_nodes,
     }
 
     /* initialise bootinfo-related global state */
-    seL4_BootInfo *bi = BI_PTR(rootserver.boot_info);
+    seL4_BootInfo *bi = (seL4_BootInfo *)rootserver.boot_info;
     bi->nodeID = node_id;
     bi->numNodes = num_nodes;
     bi->numIOPTLevels = 0;

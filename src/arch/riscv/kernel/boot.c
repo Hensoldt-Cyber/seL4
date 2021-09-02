@@ -126,7 +126,8 @@ BOOT_CODE static void populate_boot_info(pptr_t bi_pptr,
      * was also code to put a padding chunk there, but the calculation was
      * broken and no padding chunk was ever really written.
      */
-    BI_PTR(rootserver.boot_info)->extraLen = extra_bi - extra_bi_reg.start;
+    seL4_BootInfo *bi = (seL4_BootInfo *)rootserver.boot_info;
+    bi->extraLen = extra_bi - extra_bi_reg.start;
 }
 
 BOOT_CODE static void init_irqs(cap_t root_cnode_cap)
