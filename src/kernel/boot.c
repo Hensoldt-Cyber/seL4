@@ -788,14 +788,14 @@ BOOT_BSS static region_t avail_reg[MAX_NUM_FREEMEM_REG];
  * A region represents an area of memory.
  */
 BOOT_CODE bool_t init_freemem(word_t n_available, const p_region_t *available,
-                              word_t n_reserved, const region_t *reserved,
                               v_region_t it_v_reg, word_t extra_bi_size_bits)
 {
-
     if (!check_available_memory(n_available, available)) {
         return false;
     }
 
+    word_t n_reserved = ndks_boot.setup_reserved_reg_cnt;
+    const region_t *reserved = ndks_boot.setup_reserved_reg;
     if (!check_reserved_memory(n_reserved, reserved)) {
         return false;
     }
@@ -931,7 +931,136 @@ BOOT_CODE bool_t init_freemem(word_t n_available, const p_region_t *available,
     return false;
 }
 
+BOOT_CODE bool_t setup_reserve_region(region_t reg)
+{
+    if (ndks_boot.setup_reserved_reg_cnt >= ARRAY_SIZE(ndks_boot.setup_reserved_reg)) {
+        printf("ERROR: no free slot to reserve region\n");
+        return false;
+    }
+
+    printf("setup reserve virt [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"]\n",
+           reg.start, reg.end);
+
+    ndks_boot.setup_reserved_reg[ndks_boot.setup_reserved_reg_cnt] = reg;
+    ndks_boot.setup_reserved_reg_cnt++;
+    return true;
+}
+
 #if defined(CONFIG_ARCH_ARM) || defined(CONFIG_ARCH_RISCV)
+
+BOOT_CODE static bool_t setup_reserve_kernel_image_region(void)
+{
+    /* Reserve the kernel image region. This may look a bit awkward, as the
+     * symbols are a reference in the kernel image window, but all allocations
+     * are done in terms of the main kernel window, so we do some translation.
+     */
+    region_t reg = paddr_to_pptr_reg((p_region_t) {
+        .start = kpptr_to_paddr((void *)KERNEL_ELF_BASE),
+        .end   = kpptr_to_paddr(ki_end)
+    });
+    return setup_reserve_region(reg);
+}
+
+BOOT_CODE static bool_t setup_check_dtb(
+    paddr_t dtb_phys_addr,
+    word_t  dtb_size)
+{
+    paddr_t dtb_phys_end = dtb_phys_addr + dtb_size;
+    if (dtb_phys_end < dtb_phys_addr) {
+        /* An integer overflow happened in DTB end address calculation, the
+         * location or size passed seems invalid.
+         */
+        printf("ERROR: DTB location at %"SEL4_PRIx_word
+               " len %"SEL4_PRIu_word" invalid\n",
+               dtb_phys_addr, dtb_size);
+        return false;
+    }
+
+    /* If the DTB is located in physical memory that is not mapped in the
+     * kernel window we cannot access it.
+     */
+    if (dtb_phys_end >= PADDR_TOP) {
+        printf("ERROR: DTB at [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] "
+               "exceeds PADDR_TOP (%"SEL4_PRIx_word")\n",
+               dtb_phys_addr, dtb_phys_end, PADDR_TOP);
+        return false;
+    }
+
+    /* Reserve the DTB region because we can copy the contents to the
+     * initial thread's extra bootinfo only after the memory initialization
+     * and root server object allocation. This process could overwrite the
+     * DTB contents already if it is located in arbitrary "free" memory.
+     */
+    region_t dtb_reg = paddr_to_pptr_reg((p_region_t) {
+        .start = dtb_phys_addr,
+        .end   = dtb_phys_end
+    });
+    if (!setup_reserve_region(dtb_reg)) {
+        printf("ERROR: cold not reserve DTB region\n");
+        return false;
+    }
+
+    return true;
+}
+
+BOOT_CODE static bool_t setup_reserve_user_image_region(p_region_t ui_p_reg)
+{
+    /* Reserve the user image region and the mode-reserved regions. For now,
+     * only one mode-reserved region is supported, because this is all that is
+     * needed.
+     */
+    if (MODE_RESERVED > 1) {
+        printf("ERROR: MODE_RESERVED > 1 unsupported!\n");
+        return false;
+    }
+
+    if (ui_p_reg.start < PADDR_TOP) {
+        region_t ui_reg = paddr_to_pptr_reg(ui_p_reg);
+        if (MODE_RESERVED == 1) {
+            if (ui_reg.end > mode_reserved_region[0].start) {
+                if (!setup_reserve_region(mode_reserved_region[0])) {
+                    printf("ERROR: could not reserve user mode-reserved region (1)\n");
+                    return false;
+                }
+                if (!setup_reserve_region(ui_reg)) {
+                    printf("ERROR: could not reserve user image region (2)\n");
+                    return false;
+                }
+            } else {
+                if (!setup_reserve_region(ui_reg)) {
+                    printf("ERROR: could not reserve user image region (1)\n");
+                    return false;
+                }
+                if (!setup_reserve_region(mode_reserved_region[0])) {
+                    printf("ERROR: could not reserve user mode-reserved region (2)\n");
+                    return false;
+                }
+            }
+        } else {
+            if (!setup_reserve_region(ui_reg)) {
+                printf("ERROR: could not reserve user image region\n");
+                return false;
+            }
+        }
+    } else {
+        if (MODE_RESERVED == 1) {
+            if (!setup_reserve_region(mode_reserved_region[0])) {
+                printf("ERROR: could not reserve user mode-reserved region\n");
+                return false;
+            }
+        }
+
+        /* The user image is above PADDR_TOP and this outside of the kernel
+         * windows. There is no point in reserving its virtual region to exclude
+         * it from the free memory setup. However, we still have to reserve the
+         * its physical region, so this area does not get turned into device
+         * untyped caps.
+         */
+        reserve_region(ui_p_reg);
+    }
+
+    return true;
+}
 
 BOOT_CODE bool_t setup_kernel(
     paddr_t ui_p_reg_start,
@@ -943,37 +1072,30 @@ BOOT_CODE bool_t setup_kernel(
 {
     printf("Bootstrapping kernel\n");
 
+    if (!setup_reserve_kernel_image_region()) {
+        printf("ERROR: could not reserve kernel image region\n");
+        return false;
+    }
+
     word_t extra_bi_size = 0;
 
     /* If a DTB was provided, pass the data on as extra bootinfo */
-    p_region_t dtb_p_reg = P_REG_EMPTY;
     if (dtb_size > 0) {
-        paddr_t dtb_phys_end = dtb_phys_addr + dtb_size;
-        if (dtb_phys_end < dtb_phys_addr) {
-            /* An integer overflow happened in DTB end address calculation, the
-             * location or size passed seems invalid.
-             */
-            printf("ERROR: DTB location at %"SEL4_PRIx_word
-                   " len %"SEL4_PRIu_word" invalid\n",
-                   dtb_phys_addr, dtb_size);
-            return false;
-        }
-        /* If the DTB is located in physical memory that is not mapped in the
-         * kernel window we cannot access it.
-         */
-        if (dtb_phys_end >= PADDR_TOP) {
-            printf("ERROR: DTB at [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] "
-                   "exceeds PADDR_TOP (%"SEL4_PRIx_word")\n",
-                   dtb_phys_addr, dtb_phys_end, PADDR_TOP);
+        if (!setup_check_dtb(dtb_phys_addr, dtb_size)) {
+            printf("ERROR: failed to process DTB\n");
             return false;
         }
         /* DTB seems valid and accessible, pass it on in bootinfo. */
         extra_bi_size += sizeof(seL4_BootInfoHeader) + dtb_size;
-        /* Remember the memory region it uses. */
-        dtb_p_reg = (p_region_t) {
-            .start = dtb_phys_addr,
-            .end   = dtb_phys_end
-        };
+    }
+
+    p_region_t ui_p_reg = {
+        .start = ui_p_reg_start,
+        .end   = ui_p_reg_end
+    };
+    if (!setup_reserve_user_image_region(ui_p_reg)) {
+        printf("ERROR: could not reserve user image region\n");
+        return false;
     }
 
     /* Setup the region of the initial thread, which consist of
@@ -981,12 +1103,8 @@ BOOT_CODE bool_t setup_kernel(
      *  - the IPC buffer (one page)
      *  - the bootinfo (BI_FRAME_SIZE_BITS)
      *  - the extra bootinfo (one page)
-     */
-    p_region_t ui_p_reg = {
-        .start = ui_p_reg_start,
-        .end   = ui_p_reg_end
-    };
-    /* Convert from physical addresses to userland vptrs with the parameter
+     *
+     * Convert from physical addresses to userland vptrs with the parameter
      * pv_offset, which is defined as:
      *     virt_address + pv_offset = phys_address
      * The offset is usually a positive value, because the virtual address of
@@ -1030,8 +1148,9 @@ BOOT_CODE bool_t setup_kernel(
         return false;
     }
 
-    /* make the free memory available to alloc_region() */
-    if (!arch_init_freemem(ui_p_reg, dtb_p_reg, it_v_reg, extra_bi_size_bits)) {
+    /* avail_p_regs comes from the auto-generated code */
+    if (!init_freemem(ARRAY_SIZE(avail_p_regs), avail_p_regs,
+                      it_v_reg, extra_bi_size_bits)) {
         printf("ERROR: free memory management initialization failed\n");
         return false;
     }
