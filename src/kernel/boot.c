@@ -978,9 +978,9 @@ BOOT_CODE bool_t setup_kernel(
 
     /* Setup the region of the initial thread, which consist of
      *  - the user image
-     *  - the IPC buffer
-     *  - the bootinfo
-     *  - the extra bootinfo
+     *  - the IPC buffer (one page)
+     *  - the bootinfo (BI_FRAME_SIZE_BITS)
+     *  - the extra bootinfo (one page)
      */
     p_region_t ui_p_reg = {
         .start = ui_p_reg_start,
@@ -1012,7 +1012,7 @@ BOOT_CODE bool_t setup_kernel(
         .end   = ui_p_reg.end   - pv_offset
     };
     vptr_t ipcbuf_vptr = ui_v_reg.end;
-    vptr_t bi_frame_vptr = ipcbuf_vptr + BIT(PAGE_BITS);
+    vptr_t bi_frame_vptr = ipcbuf_vptr + BIT(BI_FRAME_SIZE_BITS);
     vptr_t extra_bi_frame_vptr = bi_frame_vptr + BIT(PAGE_BITS);
     word_t extra_bi_size_bits = calculate_extra_bi_size_bits(extra_bi_size);
     v_region_t it_v_reg = {
