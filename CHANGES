@@ -42,7 +42,7 @@ Upcoming release: BINARY COMPATIBLE
   sword_t due to C rule violations, use word_t instead and explicitly allow overflows and underflows in the
   unsigned integer calculations. These changes could break the boot process on 64-bit platforms, as the upper 32 bit
   must be set correctly now also. The elfloader has been updated, custom bootloaders might need to be updated also.
-
+* Merge ARM and RISC-V generic kernel initialization code
 ## Upgrade Notes
 ---
 12.1.0 2021-06-10: SOURCE COMPATIBLE
