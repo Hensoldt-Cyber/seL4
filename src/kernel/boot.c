@@ -780,6 +780,12 @@ BOOT_CODE static bool_t check_reserved_memory(word_t n_reserved,
     return true;
 }
 
+BOOT_CODE static bool_t is_setup_reserved_slot_used(word_t idx)
+{
+    return (idx < ARRAY_SIZE(ndks_boot.setup_reserved_reg))
+           && (!is_reg_empty(ndks_boot.setup_reserved_reg[idx]));
+}
+
 /* we can't declare arrays on the stack, so this is space for
  * the function below to use. */
 BOOT_BSS static region_t avail_reg[MAX_NUM_FREEMEM_REG];
@@ -794,7 +800,10 @@ BOOT_CODE bool_t init_freemem(word_t n_available, const p_region_t *available,
         return false;
     }
 
-    word_t n_reserved = ndks_boot.setup_reserved_reg_cnt;
+    word_t n_reserved = 0;
+    while (is_setup_reserved_slot_used(n_reserved)) {
+        n_reserved++;
+    }
     const region_t *reserved = ndks_boot.setup_reserved_reg;
     if (!check_reserved_memory(n_reserved, reserved)) {
         return false;
@@ -933,16 +942,136 @@ BOOT_CODE bool_t init_freemem(word_t n_available, const p_region_t *available,
 
 BOOT_CODE bool_t setup_reserve_region(region_t reg)
 {
-    if (ndks_boot.setup_reserved_reg_cnt >= ARRAY_SIZE(ndks_boot.setup_reserved_reg)) {
-        printf("ERROR: no free slot to reserve region\n");
-        return false;
-    }
-
     printf("setup reserve virt [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"]\n",
            reg.start, reg.end);
 
-    ndks_boot.setup_reserved_reg[ndks_boot.setup_reserved_reg_cnt] = reg;
-    ndks_boot.setup_reserved_reg_cnt++;
+    assert(reg.start <= reg.end); /* region must be sane. */
+
+    if (is_reg_empty(reg)) {
+        return true; /* nothing to be done */
+    }
+
+    if (reg.start > PPTR_TOP) {
+        /* The region is outside of the kernel window, there is no point in
+         * reserving its virtual region to exclude it from the free memory
+         * setup. However, we still have to reserve the its physical region, so
+         * this area does not get turned into device untyped caps.
+         */
+        reserve_region(pptr_to_paddr_reg(reg));
+        return true;
+    }
+
+    /* The list of regions is ordered properly and no regions are overlapping
+     * or adjacent. Check if we have to
+     * - insert the current region somewhere
+     * - merge it with one or more existing regions
+     * - append it at then end
+     */
+    word_t i;
+    for (i = 0; is_setup_reserved_slot_used(i); i++) {
+        region_t *cur_reg = &ndks_boot.setup_reserved_reg[i];
+
+        if (reg.start > cur_reg->end) {
+            /* Non-Overlapping case: ...|--cur_reg--|...|--reg--|...
+             * The list is properly ordered, there is no impact on the current
+             * region if new region is after it. Continue the loop with the next
+             * reserved region.
+             */
+            continue;
+        }
+
+        if (reg.end < cur_reg->start) {
+            /* Non-Overlapping case: ...|--reg--|...|--cur_reg--|...
+             * The list is properly ordered, if the new element is before the
+             * current element then we have to make space and insert it.
+             */
+            region_t saved_reg = reg;
+            while (i < ARRAY_SIZE(ndks_boot.setup_reserved_reg)) {
+                cur_reg = &ndks_boot.setup_reserved_reg[i];
+                region_t tmp_reg = *cur_reg;
+                *cur_reg = saved_reg;
+                if (is_reg_empty(tmp_reg)) {
+                    return true; /* reached the end */
+                }
+                saved_reg = tmp_reg;
+                i++;
+            }
+            printf("ERROR: array is full with %d entries, can't insert "
+                   "reserved [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"]\n",
+                   (int)ARRAY_SIZE(ndks_boot.setup_reserved_reg),
+                   reg.start, reg.end - 1);
+            return false;
+        }
+
+        /* For all remaining cases, the new region is adjacent or overlapping
+         * with the current region, so we merge it.
+         *
+         * Case 1: |-reg-|             or |-reg-|           or |----reg-----|
+         *         |<----|-cur_reg-|      |<--|-cur_reg-|      |<-|-cur_reg-|
+         *
+         * Case 2:           |-reg-|   or         |-reg-|   or |----reg-----|
+         *         |-cur_reg-|---->|      |-cur_reg-|-->|      |-cur_reg-|->|
+         *
+         * Case 3a is a combination of case 1 and 2):  |--------reg--------|
+         *                                             |<--|--cur_reg--|-->|
+         *
+         * Case 3b requires no work ):    |--reg--|
+         *                              |--cur_reg--|
+         */
+        if (reg.start < cur_reg->start) {
+            /* Case 1a-c: Adjust the region start. */
+            cur_reg->start = reg.start;
+        }
+
+        if (reg.end > cur_reg->end) {
+            /* Case 2a-c: Adjust the region end. */
+            cur_reg->end = reg.end;
+            /* We are not done, the new region could spawn more than just the
+             * current region, so check how many of the following regions can
+             * be merged.
+             */
+            i++;
+            word_t j = i;
+            for (/*nothing */; is_setup_reserved_slot_used(j); j++) {
+                region_t *next_reg = &ndks_boot.setup_reserved_reg[j];
+                if (cur_reg->end < next_reg->start) {
+                    break;
+                }
+                /* new region reached into next region, merge them. */
+                if (next_reg->end > reg.end) {
+                    cur_reg->end = next_reg->end;
+                }
+            }
+
+            if (j > i) {
+                /* Move regions to close the gap. */
+                for (/*nothing */; is_setup_reserved_slot_used(j); i++, j++) {
+                    ndks_boot.setup_reserved_reg[i] = ndks_boot.setup_reserved_reg[j];
+                }
+                /* Mark remaining regions as empty. */
+                for (/*nothing */; is_setup_reserved_slot_used(i); i++) {
+                    ndks_boot.setup_reserved_reg[i] = REG_EMPTY;
+                }
+            }
+        }
+
+        return true;
+
+    }
+
+    /* If we arrive here, the new region is after the existing region. Append it
+     * at the end if there is still space. */
+    if (i >= ARRAY_SIZE(ndks_boot.setup_reserved_reg)) {
+        printf("ERROR: array is full with %d entries, can't add "
+               "reserved [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"]\n",
+               (int)ARRAY_SIZE(ndks_boot.setup_reserved_reg),
+               reg.start, reg.end - 1);
+        return false;
+    }
+
+    /* Sanity check: the slot must be empty. */
+    assert(is_reg_empty(ndks_boot.setup_reserved_reg[i]));
+    ndks_boot.setup_reserved_reg[i] = reg;
     return true;
 }
 
@@ -1005,58 +1134,9 @@ BOOT_CODE static bool_t setup_check_dtb(
 
 BOOT_CODE static bool_t setup_reserve_user_image_region(p_region_t ui_p_reg)
 {
-    /* Reserve the user image region and the mode-reserved regions. For now,
-     * only one mode-reserved region is supported, because this is all that is
-     * needed.
-     */
-    if (MODE_RESERVED > 1) {
-        printf("ERROR: MODE_RESERVED > 1 unsupported!\n");
+    if (!setup_reserve_region(paddr_to_pptr_reg(ui_p_reg))) {
+        printf("ERROR: could not reserve user mode-reserved region\n");
         return false;
-    }
-
-    if (ui_p_reg.start < PADDR_TOP) {
-        region_t ui_reg = paddr_to_pptr_reg(ui_p_reg);
-        if (MODE_RESERVED == 1) {
-            if (ui_reg.end > mode_reserved_region[0].start) {
-                if (!setup_reserve_region(mode_reserved_region[0])) {
-                    printf("ERROR: could not reserve user mode-reserved region (1)\n");
-                    return false;
-                }
-                if (!setup_reserve_region(ui_reg)) {
-                    printf("ERROR: could not reserve user image region (2)\n");
-                    return false;
-                }
-            } else {
-                if (!setup_reserve_region(ui_reg)) {
-                    printf("ERROR: could not reserve user image region (1)\n");
-                    return false;
-                }
-                if (!setup_reserve_region(mode_reserved_region[0])) {
-                    printf("ERROR: could not reserve user mode-reserved region (2)\n");
-                    return false;
-                }
-            }
-        } else {
-            if (!setup_reserve_region(ui_reg)) {
-                printf("ERROR: could not reserve user image region\n");
-                return false;
-            }
-        }
-    } else {
-        if (MODE_RESERVED == 1) {
-            if (!setup_reserve_region(mode_reserved_region[0])) {
-                printf("ERROR: could not reserve user mode-reserved region\n");
-                return false;
-            }
-        }
-
-        /* The user image is above PADDR_TOP and this outside of the kernel
-         * windows. There is no point in reserving its virtual region to exclude
-         * it from the free memory setup. However, we still have to reserve the
-         * its physical region, so this area does not get turned into device
-         * untyped caps.
-         */
-        reserve_region(ui_p_reg);
     }
 
     return true;
@@ -1076,6 +1156,15 @@ BOOT_CODE bool_t setup_kernel(
         printf("ERROR: could not reserve kernel image region\n");
         return false;
     }
+
+#ifdef CONFIG_ARCH_AARCH32
+    for (int i = 0; i < MODE_RESERVED; i++) {
+        if (!setup_reserve_region(mode_reserved_region[i])) {
+            printf("ERROR: could not reserve mode-reserved region #%d\n", i);
+            return false;
+        }
+    }
+#endif /* CONFIG_ARCH_AARCH32 */
 
     word_t extra_bi_size = 0;
 

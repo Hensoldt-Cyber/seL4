@@ -21,7 +21,6 @@ typedef cte_t *slot_ptr_t;
 
 typedef struct ndks_boot {
     region_t setup_reserved_reg[NUM_RESERVED_REGIONS];
-    word_t setup_reserved_reg_cnt;
     p_region_t reserved[MAX_NUM_RESV_REG];
     word_t resv_count;
     region_t   freemem[MAX_NUM_FREEMEM_REG];
