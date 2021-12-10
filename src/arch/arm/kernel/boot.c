@@ -294,7 +294,7 @@ BOOT_CODE void arch_release_secondary_cores(void)
     assert(0 == node_boot_lock);
     node_boot_lock = 1;
 
-#ifndef CONFIG_ARCH_AARCH64
+#ifdef CONFIG_ARCH_AARCH32
     /* At this point in time the other CPUs do *not* have the seL4 global pd set.
      * However, they still have a PD from the elfloader (which is mapping memory
      * as strongly ordered uncached, as a result we need to explicitly clean
@@ -306,7 +306,7 @@ BOOT_CODE void arch_release_secondary_cores(void)
      */
     cleanInvalidateL1Caches();
     plat_cleanInvalidateL2Cache();
-#endif
+#endif /* CONFIG_ARCH_AARCH32 */
 }
 #endif /* ENABLE_SMP_SUPPORT */
 
