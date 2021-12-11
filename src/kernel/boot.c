@@ -1025,7 +1025,7 @@ BOOT_CODE bool_t setup_kernel(
          * between platforms (int, long), so we have to cast here to play safe.
          */
         printf("ERROR: userland image virt [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"]"
-               "exceeds USER_TOP (%"SEL4_PRIx_word")\n",
+               " exceeds USER_TOP (%"SEL4_PRIx_word")\n",
                it_v_reg.start, it_v_reg.end, (word_t)USER_TOP);
         return false;
     }
