@@ -443,13 +443,16 @@ static BOOT_CODE bool_t try_init_kernel(
     return true;
 }
 
+/* This is called from assembly code and thus there are no specific types in
+ * the signature.
+ */
 BOOT_CODE VISIBLE void init_kernel(
-    paddr_t ui_p_reg_start,
-    paddr_t ui_p_reg_end,
-    sword_t pv_offset,
-    vptr_t  v_entry,
-    paddr_t dtb_addr_p,
-    uint32_t dtb_size
+    word_t ui_p_reg_start,
+    word_t ui_p_reg_end,
+    word_t pv_offset,
+    word_t v_entry,
+    word_t dtb_addr_p,
+    word_t dtb_size
 #ifdef ENABLE_SMP_SUPPORT
     ,
     word_t hart_id,
@@ -462,21 +465,21 @@ BOOT_CODE VISIBLE void init_kernel(
 #ifdef ENABLE_SMP_SUPPORT
     add_hart_to_core_map(hart_id, core_id);
     if (core_id == 0) {
-        result = try_init_kernel(ui_p_reg_start,
-                                 ui_p_reg_end,
-                                 pv_offset,
-                                 v_entry,
-                                 dtb_addr_p,
+        result = try_init_kernel((paddr_t)ui_p_reg_start,
+                                 (paddr_t)ui_p_reg_end,
+                                 (sword_t)pv_offset,
+                                 (vptr_t)v_entry,
+                                 (paddr_t)dtb_addr_p,
                                  dtb_size);
     } else {
         result = try_init_kernel_secondary_core(hart_id, core_id);
     }
 #else
-    result = try_init_kernel(ui_p_reg_start,
-                             ui_p_reg_end,
-                             pv_offset,
-                             v_entry,
-                             dtb_addr_p,
+    result = try_init_kernel((paddr_t)ui_p_reg_start,
+                             (paddr_t)ui_p_reg_end,
+                             (sword_t)pv_offset,
+                             (vptr_t)v_entry,
+                             (paddr_t)dtb_addr_p,
                              dtb_size);
 #endif
     if (!result) {

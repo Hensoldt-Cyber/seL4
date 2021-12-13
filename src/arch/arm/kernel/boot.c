@@ -615,13 +615,16 @@ static BOOT_CODE bool_t try_init_kernel(
     return true;
 }
 
+/* This is called from assembly code and thus there are no specific types in
+ * the signature.
+ */
 BOOT_CODE VISIBLE void init_kernel(
-    paddr_t ui_p_reg_start,
-    paddr_t ui_p_reg_end,
-    sword_t pv_offset,
-    vptr_t  v_entry,
-    paddr_t dtb_addr_p,
-    uint32_t dtb_size
+    word_t ui_p_reg_start,
+    word_t ui_p_reg_end,
+    word_t pv_offset,
+    word_t v_entry,
+    word_t dtb_addr_p,
+    word_t dtb_size
 )
 {
     bool_t result;
@@ -629,21 +632,21 @@ BOOT_CODE VISIBLE void init_kernel(
 #ifdef ENABLE_SMP_SUPPORT
     /* we assume there exists a cpu with id 0 and will use it for bootstrapping */
     if (getCurrentCPUIndex() == 0) {
-        result = try_init_kernel(ui_p_reg_start,
-                                 ui_p_reg_end,
-                                 pv_offset,
-                                 v_entry,
-                                 dtb_addr_p, dtb_size);
+        result = try_init_kernel((paddr_t)ui_p_reg_start,
+                                 (paddr_t)ui_p_reg_end,
+                                 (sword_t)pv_offset,
+                                 (vptr_t)v_entry,
+                                 (paddr_t)dtb_addr_p, dtb_size);
     } else {
         result = try_init_kernel_secondary_core();
     }
 
 #else
-    result = try_init_kernel(ui_p_reg_start,
-                             ui_p_reg_end,
-                             pv_offset,
-                             v_entry,
-                             dtb_addr_p, dtb_size);
+    result = try_init_kernel((paddr_t)ui_p_reg_start,
+                             (paddr_t)ui_p_reg_end,
+                             (sword_t)pv_offset,
+                             (vptr_t)v_entry,
+                             (paddr_t)dtb_addr_p, dtb_size);
 
 #endif /* ENABLE_SMP_SUPPORT */
 
