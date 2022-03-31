@@ -39,17 +39,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [ARM, ARM_HYP, AARCH64, RISCV64, X64]
-        feature: ["", MCS]
-        exclude:
-          - arch: ARM_HYP
-            feature: MCS
-          - arch: AARCH64
-            feature: MCS
-          - arch: X64
-            feature: MCS
+        arch: [RISCV64]
+        feature: [""]
     steps:
-    - uses: seL4/ci-actions/preprocess@master
+    - uses: hensoldt-cyber/ci-actions/preprocess@patch-axel-6a
       with:
         L4V_ARCH: ${{ matrix.arch }}
         L4V_FEATURES: ${{ matrix.feature }}
