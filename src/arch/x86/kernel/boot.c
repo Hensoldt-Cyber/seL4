@@ -94,17 +94,13 @@ BOOT_CODE bool_t init_sys_state(
     create_frames_of_region_ret_t create_frames_ret;
     create_frames_of_region_ret_t extra_bi_ret;
 
-    /* convert from physical addresses to kernel pptrs */
-    region_t ui_reg             = paddr_to_pptr_reg(ui_info.p_reg);
-    region_t boot_mem_reuse_reg = paddr_to_pptr_reg(boot_mem_reuse_p_reg);
-
     /* Reserve the area from the kernel image base up to the user image end.
      * KERNEL_ELF_PADDR_BASE is the lowest physical load address used in the
      * x86 linker script.
      */
-    region_t reg_kernel_and_user_image = {
-        .start = (word_t)paddr_to_pptr(KERNEL_ELF_PADDR_BASE),
-        .end   = ui_reg.end
+    p_region_t reg_kernel_and_user_image = {
+        .start = KERNEL_ELF_PADDR_BASE,
+        .end   = ui_info.p_reg.end
     };
     if (!setup_reserve_region(reg_kernel_and_user_image)) {
         printf("ERROR: could no reserve kernel and user image region\n");
@@ -276,7 +272,7 @@ BOOT_CODE bool_t init_sys_state(
         create_frames_of_region(
             root_cnode_cap,
             it_vspace_cap,
-            ui_reg,
+            paddr_to_pptr_reg(ui_info.p_reg),
             true,
             ui_info.pv_offset
         );
@@ -329,7 +325,8 @@ BOOT_CODE bool_t init_sys_state(
 #endif
 
     /* create all of the untypeds. Both devices and kernel window memory */
-    if (!create_untypeds(root_cnode_cap, boot_mem_reuse_reg)) {
+    if (!create_untypeds(root_cnode_cap,
+                         paddr_to_pptr_reg(boot_mem_reuse_p_reg))) {
         return false;
     }
 

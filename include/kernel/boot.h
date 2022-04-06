@@ -25,7 +25,7 @@ typedef cte_t *slot_ptr_t;
 typedef struct ndks_boot {
     p_region_t reserved[MAX_NUM_RESV_REG];
     word_t resv_count;
-    region_t   freemem[MAX_NUM_FREEMEM_REG];
+    p_region_t   freemem[MAX_NUM_FREEMEM_REG];
     seL4_BootInfo      *bi_frame;
     seL4_SlotPos slot_pos_cur;
 } ndks_boot_t;
@@ -135,7 +135,7 @@ static inline BOOT_CODE pptr_t it_alloc_paging(void)
 /* return the amount of paging structures required to cover v_reg */
 word_t arch_get_n_paging(v_region_t it_veg);
 
-bool_t setup_reserve_region(region_t reg);
+bool_t setup_reserve_region(p_region_t reg);
 
 #if defined(CONFIG_ARCH_ARM) || defined(CONFIG_ARCH_RISCV)
 
