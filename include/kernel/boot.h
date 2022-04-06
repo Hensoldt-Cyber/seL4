@@ -40,7 +40,6 @@ static inline bool_t is_reg_empty(region_t reg)
 }
 
 bool_t init_freemem(word_t n_available, const p_region_t *available,
-                    word_t n_reserved, const region_t *reserved,
                     v_region_t it_v_reg, word_t extra_bi_size_bits);
 bool_t reserve_region(p_region_t reg);
 void write_slot(slot_ptr_t slot_ptr, cap_t cap);
@@ -136,13 +135,9 @@ static inline BOOT_CODE pptr_t it_alloc_paging(void)
 /* return the amount of paging structures required to cover v_reg */
 word_t arch_get_n_paging(v_region_t it_veg);
 
-#if defined(CONFIG_ARCH_ARM) || defined(CONFIG_ARCH_RISCV)
+bool_t setup_reserve_region(region_t reg);
 
-bool_t arch_init_freemem(
-    p_region_t ui_p_reg,
-    p_region_t dtb_p_reg,
-    v_region_t it_v_reg,
-    word_t extra_bi_size_bits);
+#if defined(CONFIG_ARCH_ARM) || defined(CONFIG_ARCH_RISCV)
 
 void arch_init_irqs(cap_t root_cnode_cap);
 #ifdef CONFIG_ARM_SMMU

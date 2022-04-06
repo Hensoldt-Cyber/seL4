@@ -23,9 +23,6 @@
 
 #include <plat/machine/intel-vtd.h>
 
-#define MAX_RESERVED 1
-BOOT_BSS static region_t reserved[MAX_RESERVED];
-
 /* functions exactly corresponding to abstract specification */
 
 BOOT_CODE static void init_irqs(cap_t root_cnode_cap)
@@ -67,20 +64,6 @@ BOOT_CODE static void init_irqs(cap_t root_cnode_cap)
     write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), seL4_CapIRQControl), cap_irq_control_cap_new());
 }
 
-BOOT_CODE static bool_t arch_init_freemem(p_region_t ui_p_reg,
-                                          v_region_t it_v_reg,
-                                          mem_p_regs_t *mem_p_regs,
-                                          word_t extra_bi_size_bits)
-{
-    // Extend the reserved region down to include the base of the kernel image.
-    // KERNEL_ELF_PADDR_BASE is the lowest physical load address used
-    // in the x86 linker script.
-    ui_p_reg.start = KERNEL_ELF_PADDR_BASE;
-    reserved[0] = paddr_to_pptr_reg(ui_p_reg);
-    return init_freemem(mem_p_regs->count, mem_p_regs->list, MAX_RESERVED,
-                        reserved, it_v_reg, extra_bi_size_bits);
-}
-
 /* This function initialises a node's kernel state. It does NOT initialise the CPU. */
 
 BOOT_CODE bool_t init_sys_state(
@@ -114,6 +97,20 @@ BOOT_CODE bool_t init_sys_state(
     /* convert from physical addresses to kernel pptrs */
     region_t ui_reg             = paddr_to_pptr_reg(ui_info.p_reg);
     region_t boot_mem_reuse_reg = paddr_to_pptr_reg(boot_mem_reuse_p_reg);
+
+    /* Reserve the area from the kernel image base up to the user image end.
+     * KERNEL_ELF_PADDR_BASE is the lowest physical load address used in the
+     * x86 linker script.
+     */
+    region_t reg_kernel_and_user_image = {
+        .start = (word_t)paddr_to_pptr(KERNEL_ELF_PADDR_BASE),
+        .end   = ui_reg.end
+    };
+    if (!setup_reserve_region(reg_kernel_and_user_image)) {
+        printf("ERROR: could no reserve kernel and user image region\n");
+        return false;
+
+    }
 
     /* convert from physical addresses to userland vptrs */
     v_region_t ui_v_reg;
@@ -152,7 +149,8 @@ BOOT_CODE bool_t init_sys_state(
     }
 #endif /* CONFIG_IOMMU */
 
-    if (!arch_init_freemem(ui_info.p_reg, it_v_reg, mem_p_regs, extra_bi_size_bits)) {
+    if (!init_freemem(mem_p_regs->count, mem_p_regs->list,
+                      it_v_reg, extra_bi_size_bits)) {
         printf("ERROR: free memory management initialization failed\n");
         return false;
     }

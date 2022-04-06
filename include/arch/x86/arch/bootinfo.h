@@ -8,6 +8,9 @@
 
 #define MAX_NUM_FREEMEM_REG 16
 
+/* Reserve one region for both kernel image and user image */
+#define NUM_RESERVED_REGIONS 1
+
 /*
  * The maximum number of reserved regions we have is:
  * - 1 for each physical memory region (MAX_NUM_FREEMEM_REG)
