@@ -24,7 +24,6 @@ BOOT_BSS ndks_boot_t ndks_boot;
 BOOT_BSS rootserver_mem_t rootserver;
 BOOT_BSS static region_t rootserver_mem;
 BOOT_BSS static region_t setup_reserved_reg[NUM_RESERVED_REGIONS];
-BOOT_BSS static word_t setup_reserved_reg_cnt;
 
 BOOT_CODE static void merge_regions(void)
 {
@@ -766,15 +765,24 @@ BOOT_CODE static bool_t check_available_memory(word_t n_available,
     return true;
 }
 
-
-BOOT_CODE static bool_t check_reserved_memory(word_t n_reserved,
-                                              const region_t *reserved)
+BOOT_CODE static bool_t is_setup_reserved_slot_used(word_t idx)
 {
+    return (idx < ARRAY_SIZE(setup_reserved_reg))
+           && (!is_reg_empty(setup_reserved_reg[idx]));
+}
+
+BOOT_CODE static bool_t check_reserved_memory(void)
+{
+    word_t n_reserved = 0;
+    while (is_setup_reserved_slot_used(n_reserved)) {
+        n_reserved++;
+    }
+
     printf("reserved virt address space regions: %"SEL4_PRIu_word"\n",
            n_reserved);
     /* Force ordering and exclusivity of reserved regions. */
     for (word_t i = 0; i < n_reserved; i++) {
-        const region_t *r = &reserved[i];
+        const region_t *r = &setup_reserved_reg[i];
         printf("  [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"]\n", r->start, r->end);
 
         /* Reserved regions must be sane, the size is allowed to be zero. */
@@ -784,7 +792,7 @@ BOOT_CODE static bool_t check_reserved_memory(word_t n_reserved,
         }
 
         /* Regions must be ordered and must not overlap. */
-        if ((i > 0) && (r->start < reserved[i - 1].end)) {
+        if ((i > 0) && (r->start < setup_reserved_reg[i - 1].end)) {
             printf("ERROR: reserved region %"SEL4_PRIu_word" in wrong order\n", i);
             return false;
         }
@@ -807,10 +815,13 @@ BOOT_CODE bool_t init_freemem(word_t n_available, const p_region_t *available,
         return false;
     }
 
-    word_t n_reserved = setup_reserved_reg_cnt;
-    const region_t *reserved = setup_reserved_reg;
-    if (!check_reserved_memory(n_reserved, reserved)) {
+    if (!check_reserved_memory()) {
         return false;
+    }
+    const region_t *reserved = setup_reserved_reg;
+    word_t n_reserved = 0;
+    while (is_setup_reserved_slot_used(n_reserved)) {
+        n_reserved++;
     }
 
     for (word_t i = 0; i < ARRAY_SIZE(ndks_boot.freemem); i++) {
@@ -946,16 +957,156 @@ BOOT_CODE bool_t init_freemem(word_t n_available, const p_region_t *available,
 
 BOOT_CODE bool_t setup_reserve_region(region_t reg)
 {
-    if (setup_reserved_reg_cnt >= ARRAY_SIZE(setup_reserved_reg)) {
-        printf("ERROR: no free slot to reserve region\n");
-        return false;
-    }
-
     printf("setup reserve virt [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"]\n",
            reg.start, reg.end);
 
-    setup_reserved_reg[setup_reserved_reg_cnt] = reg;
-    setup_reserved_reg_cnt++;
+    assert(reg.start <= reg.end); /* region must be sane. */
+
+    if (is_reg_empty(reg)) {
+        return true; /* nothing to be done */
+    }
+
+    if (reg.start > PPTR_TOP) {
+        /* The region is outside of the kernel window, there is no point in
+         * reserving its virtual region to exclude it from the free memory
+         * setup. However, we still have to reserve the its physical region, so
+         * this area does not get turned into device untyped caps.
+         */
+        reserve_region(pptr_to_paddr_reg(reg));
+        return true;
+    }
+
+    if (reg.end > PPTR_TOP) {
+        /* The region is partly outside of the kernel window, reserve the part
+         * that is outside so it does not get turned in device untypeds. Shrink
+         * the region to the part inside the kernel window.
+         */
+        reserve_region(pptr_to_paddr_reg((region_t) {
+            .start = PPTR_TOP + 1,
+            .end   = reg.end
+        }));
+        reg.end = PPTR_TOP;
+    }
+
+    /* The list of regions is ordered properly and no regions are overlapping
+     * or adjacent. Check if we have to insert the current region somewhere
+     * respectively append it at then end. Or if we have to merge it with one or
+     * more existing regions
+     */
+    word_t i = 0;
+    while (is_setup_reserved_slot_used(i)) {
+        region_t *cur_reg = &setup_reserved_reg[i];
+
+        if (reg.start > cur_reg->end) {
+            /* Non-Overlapping case: ...|--cur_reg--|...|--reg--|...
+             * The list is properly ordered, there is no impact on the current
+             * region if new region is after it. Continue the loop with the next
+             * reserved region.
+             */
+            i++;
+            continue;
+        }
+
+        if (reg.end < cur_reg->start) {
+            /* Non-Overlapping case: ...|--reg--|...|--cur_reg--|...
+             * Insert the region before the current region, which means moving
+             * all existing region one place up. This only works if the list
+             * still has space.
+             */
+            if (is_setup_reserved_slot_used(
+                    ARRAY_SIZE(setup_reserved_reg) - 1)) {
+                printf("ERROR: array is full with %d entries, can't insert"
+                       " reserved [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"]\n",
+                       (int)ARRAY_SIZE(setup_reserved_reg),
+                       reg.start, reg.end - 1);
+                return false;
+            }
+            region_t saved_reg = reg;
+            while (i < ARRAY_SIZE(setup_reserved_reg)) {
+                region_t tmp_reg = setup_reserved_reg[i];
+                setup_reserved_reg[i] = saved_reg;
+                if (is_reg_empty(tmp_reg)) {
+                    break;
+                }
+                saved_reg = tmp_reg;
+                i++;
+            }
+            return true; /* reached the end */
+        }
+
+        /* The new region is adjacent or overlapping with the current region, so
+         * we have to merge it.
+         *
+         * Case 1: |-reg-|             or |-reg-|           or |-----reg-----|
+         *         |<----|-cur_reg-|      |<--|-cur_reg-|      |<--|-cur_reg-|
+         *
+         * Case 2:           |-reg-|   or         |-reg-|   or |-----reg-----|
+         *         |-cur_reg-|---->|      |-cur_reg-|-->|      |-cur_reg-|-->|
+         *
+         * Case 3 is a combination of case 1 and 2:  |--------reg--------|
+         *                                           |<--|--cur_reg--|-->|
+         *
+         * Case 4 requires no work:      |--reg--|
+         *                              |--cur_reg--|
+         */
+        if (reg.start < cur_reg->start) {
+            /* Case 1a-c: Adjust the region start. */
+            cur_reg->start = reg.start;
+        }
+
+        if (reg.end > cur_reg->end) {
+            /* Case 2a-c: Adjust the region end. */
+            cur_reg->end = reg.end;
+            /* We are not done here, the new region could spawn more than just
+             * the current region, so check how many of the following regions
+             * can be merged.
+             */
+            i++;
+            word_t j = i;
+            while (is_setup_reserved_slot_used(j)) {
+                region_t *next_reg = &setup_reserved_reg[j];
+                if (cur_reg->end < next_reg->start) {
+                    break;
+                }
+                /* new region reached into next region, merge them. */
+                if (next_reg->end > reg.end) {
+                    cur_reg->end = next_reg->end;
+                }
+                j++;
+            }
+
+            if (j > i) {
+                /* Move regions down to close the gap. */
+                while (is_setup_reserved_slot_used(j)) {
+                    setup_reserved_reg[i] = setup_reserved_reg[j];
+                    i++;
+                    j++;
+                }
+                /* Mark remaining regions as empty. */
+                while (is_setup_reserved_slot_used(i)) {
+                    setup_reserved_reg[i] = REG_EMPTY;
+                    i++;
+                }
+            }
+        }
+
+        return true;
+
+    } /* end while while (is_setup_reserved_slot_used(i)) */
+
+    /* If we arrive here, the new region is after all existing regions. Append
+     * it at the end if there is still space. */
+    if (i >= ARRAY_SIZE(setup_reserved_reg)) {
+        printf("ERROR: array is full with %d entries, can't append"
+               " reserved [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"]\n",
+               (int)ARRAY_SIZE(setup_reserved_reg),
+               reg.start, reg.end - 1);
+        return false;
+    }
+
+    /* Sanity check: the slot must be empty. */
+    assert(is_reg_empty(setup_reserved_reg[i]));
+    setup_reserved_reg[i] = reg;
     return true;
 }
 
@@ -1016,72 +1167,6 @@ BOOT_CODE static bool_t setup_check_dtb(
     return true;
 }
 
-BOOT_CODE static bool_t setup_reserve_user_image_region(p_region_t ui_p_reg)
-{
-    /* Reserve the user image region and the mode-reserved regions. For now,
-     * only one mode-reserved region is supported, because this is all that is
-     * needed.
-     */
-#ifdef MODE_RESERVED
-    if (MODE_RESERVED > 1) {
-        printf("ERROR: MODE_RESERVED > 1 unsupported!\n");
-        return false;
-    }
-#endif /* MODE_RESERVED */
-
-    if (ui_p_reg.start < PADDR_TOP) {
-        region_t ui_reg = paddr_to_pptr_reg(ui_p_reg);
-#ifdef MODE_RESERVED
-        if (MODE_RESERVED == 1) {
-            if (ui_reg.end > mode_reserved_region[0].start) {
-                if (!setup_reserve_region(mode_reserved_region[0])) {
-                    printf("ERROR: could not reserve user mode-reserved region (1)\n");
-                    return false;
-                }
-                if (!setup_reserve_region(ui_reg)) {
-                    printf("ERROR: could not reserve user image region (2)\n");
-                    return false;
-                }
-            } else {
-                if (!setup_reserve_region(ui_reg)) {
-                    printf("ERROR: could not reserve user image region (1)\n");
-                    return false;
-                }
-                if (!setup_reserve_region(mode_reserved_region[0])) {
-                    printf("ERROR: could not reserve user mode-reserved region (2)\n");
-                    return false;
-                }
-            }
-        } else {
-#endif /* MODE_RESERVED */
-            if (!setup_reserve_region(ui_reg)) {
-                printf("ERROR: could not reserve user image region\n");
-                return false;
-            }
-#ifdef MODE_RESERVED
-        }
-#endif /* MODE_RESERVED */
-    } else {
-#ifdef MODE_RESERVED
-        if (MODE_RESERVED == 1) {
-            if (!setup_reserve_region(mode_reserved_region[0])) {
-                printf("ERROR: could not reserve user mode-reserved region\n");
-                return false;
-            }
-        }
-#endif /* MODE_RESERVED */
-        /* The user image is above PADDR_TOP and this outside of the kernel
-         * windows. There is no point in reserving its virtual region to exclude
-         * it from the free memory setup. However, we still have to reserve the
-         * its physical region, so this area does not get turned into device
-         * untyped caps.
-         */
-        reserve_region(ui_p_reg);
-    }
-
-    return true;
-}
-
 BOOT_CODE bool_t setup_kernel(
     paddr_t ui_p_reg_start,
     paddr_t ui_p_reg_end,
@@ -1096,6 +1181,15 @@ BOOT_CODE bool_t setup_kernel(
         printf("ERROR: could not reserve kernel image region\n");
         return false;
     }
+
+#if defined(MODE_RESERVED)
+    for (int i = 0; i < MODE_RESERVED; i++) {
+        if (!setup_reserve_region(mode_reserved_region[i])) {
+            printf("ERROR: could not reserve mode-reserved region #%d\n", i);
+            return false;
+        }
+    }
+#endif /* MODE_RESERVED */
 
     word_t extra_bi_size = 0;
 
@@ -1113,7 +1207,8 @@ BOOT_CODE bool_t setup_kernel(
         .start = ui_p_reg_start,
         .end   = ui_p_reg_end
     };
-    if (!setup_reserve_user_image_region(ui_p_reg)) {
+    /* reserve the user image region */
+    if (!setup_reserve_region(paddr_to_pptr_reg(ui_p_reg))) {
         printf("ERROR: could not reserve user image region\n");
         return false;
     }
