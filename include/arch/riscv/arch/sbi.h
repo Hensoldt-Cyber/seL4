@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
 
 /* Copyright (c) 2010-2017, The Regents of the University of California
- * (Regents).  All Rights Reserved.
+ *                          (Regents).  All Rights Reserved.
+ * Copyright 2021, HENSOLDT Cyber
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -33,6 +34,20 @@
 #pragma once
 
 #include <config.h>
+#if defined(CONFIG_RISCV_SBI_NONE)
+/* nothing here if there is no SBI */
+#else
+
+/* We check for specific SBI implementation here, but actually this is checking
+ * for a specific SBI interface. It does not matter what SBI implementation is
+ * running on a platform implementing this interface.
+ */
+#if !defined(CONFIG_RISCV_SBI_OPENSBI) \
+    && !defined(CONFIG_RISCV_SBI_BBL) \
+    && !defined(CONFIG_RISCV_SBI_ROM)
+#error Unknown SBI implementation
+#endif
+
 #include <stdint.h>
 
 /* See https://github.com/riscv/riscv-sbi-doc/blob/master/riscv-sbi.adoc for
@@ -155,3 +170,4 @@ static inline void sbi_remote_sfence_vma_asid(word_t hart_mask,
 }
 
 #endif /* ENABLE_SMP_SUPPORT */
+#endif /* not CONFIG_RISCV_SBI_NONE */
