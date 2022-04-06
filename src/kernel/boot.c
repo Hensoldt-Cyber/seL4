@@ -30,6 +30,70 @@ BOOT_CODE static inline bool_t is_p_reg_empty(p_region_t reg)
     return reg.start == reg.end;
 }
 
+/*
+ * Create a boot info record
+ *
+ * If bi is NULL, this just returns the amount of byte that would have been
+ * written for the boot info record. If bi is not NULL and data is NULL, then
+ * the boot info record payload is filled with zeros.
+ */
+BOOT_CODE seL4_Word add_extra_bootinfo(
+    void *bi,
+    seL4_Word bi_block_id,
+    void const *data,
+    seL4_Word data_len)
+{
+    if (bi) {
+        /* The target location could be unaligned, thus we populate the header
+         * on our aligned structure and then copy it to the target location.
+         */
+        seL4_BootInfoHeader header = {
+            .id = bi_block_id,
+            .len = sizeof(header) + data_len
+        };
+
+        memcpy(bi, &header, sizeof(header));
+
+        void *addr = (void *)((word_t)bi + sizeof(header));
+        if (data_len > 0) {
+            if (data) {
+                memcpy(addr, data, data_len);
+            } else {
+                memset(addr, 0, data_len);
+            }
+        }
+    }
+
+    return sizeof(seL4_BootInfoHeader) + data_len;
+}
+
+
+/*
+ * Create a boot info record as padding for the given space. If there is not
+ * enough space for a boot info header then just zero the space.
+ *
+ * If bi is NULL, this just returns the amount of byte that would have been
+ * written for the boot info record.
+ */
+BOOT_CODE void add_extra_bootinfo_padding(
+    void *bi,
+    seL4_Word len)
+{
+    if (len < sizeof(seL4_BootInfoHeader)) {
+        /* fill space with zeros if there is not even enough space to put a
+         * header there
+         */
+        printf("WARNUNG: not enough left-over space to even write a boot info padding header");
+        if (bi) {
+            memset(bi, 0, len);
+        }
+    } else {
+        /* ignore the return value */
+        (void)add_extra_bootinfo(bi, SEL4_BOOTINFO_HEADER_PADDING, NULL,
+                                 len - sizeof(seL4_BootInfoHeader));
+    }
+}
+
 BOOT_CODE static void merge_regions(void)
 {
     /* Walk through reserved regions and see if any can be merged */
@@ -1166,6 +1230,38 @@ BOOT_CODE static bool_t setup_check_dtb(
     return true;
 }
 
+/* This function has two purposes:
+ * - Just calculate the size of the extra boot. This will be done it the
+ *   parameter extra_bi_size is set to 0, the function will return the required
+ *   size then.
+ * - Populate the extra boot info in rootserver.extra_bi. Pass the reserved size
+ *   in the parameter extra_bi_size, this is likely the value that has been
+ *   calculated before.
+ */
+BOOT_CODE static word_t extra_bi_helper(word_t extra_bi_size,
+                                        paddr_t dtb_phys_addr,
+                                        word_t dtb_size)
+{
+    /* if extra_bi_size is 0, then we just calculate the required length */
+    word_t bi = (0 == extra_bi_size) ? 0 : rootserver.extra_bi;
+    pptr_t offset = 0;
+
+    /* if there is a DTB, put it in the extra bootinfo block */
+    if (dtb_size > 0) {
+        offset += add_extra_bootinfo(bi ? (void *)(bi + offset) : NULL,
+                                     SEL4_BOOTINFO_HEADER_FDT,
+                                     paddr_to_pptr(dtb_phys_addr), dtb_size);
+    }
+
+    /* provide a chunk for any leftover padding */
+    if (extra_bi_size > offset) {
+        add_extra_bootinfo_padding(bi ? (void *)(bi + offset) : NULL,
+                                   extra_bi_size - offset);
+    }
+
+    return offset;
+}
+
 BOOT_CODE bool_t setup_kernel(
     paddr_t ui_p_reg_start,
     paddr_t ui_p_reg_end,
@@ -1190,16 +1286,12 @@ BOOT_CODE bool_t setup_kernel(
     }
 #endif /* MODE_RESERVED */
 
-    word_t extra_bi_size = 0;
-
     /* If a DTB was provided, pass the data on as extra bootinfo */
     if (dtb_size > 0) {
         if (!setup_check_dtb(dtb_phys_addr, dtb_size)) {
             printf("ERROR: failed to process DTB\n");
             return false;
         }
-        /* DTB seems valid and accessible, pass it on in bootinfo. */
-        extra_bi_size += sizeof(seL4_BootInfoHeader) + dtb_size;
     }
 
     p_region_t ui_p_reg = {
@@ -1227,6 +1319,7 @@ BOOT_CODE bool_t setup_kernel(
     vptr_t ipcbuf_vptr = ui_v_reg.end;
     vptr_t bi_frame_vptr = ipcbuf_vptr + BIT(PAGE_BITS);
     vptr_t extra_bi_frame_vptr = bi_frame_vptr + BIT(BI_FRAME_SIZE_BITS);
+    word_t extra_bi_size = extra_bi_helper(0, dtb_phys_addr, dtb_size);
     word_t extra_bi_size_bits = calculate_extra_bi_size_bits(extra_bi_size);
     v_region_t it_v_reg = {
         .start = ui_v_reg.start,
@@ -1277,26 +1370,7 @@ BOOT_CODE bool_t setup_kernel(
 
     /* create the bootinfo frame */
     populate_bi_frame(0, CONFIG_MAX_NUM_NODES, ipcbuf_vptr, extra_bi_size);
-    pptr_t extra_bi_offset = 0;
-    /* put DTB in the bootinfo block, if present. */
-    seL4_BootInfoHeader header;
-    if (dtb_size > 0) {
-        header.id = SEL4_BOOTINFO_HEADER_FDT;
-        header.len = sizeof(header) + dtb_size;
-        *(seL4_BootInfoHeader *)(rootserver.extra_bi + extra_bi_offset) = header;
-        extra_bi_offset += sizeof(header);
-        memcpy((void *)(rootserver.extra_bi + extra_bi_offset),
-               paddr_to_pptr(dtb_phys_addr),
-               dtb_size);
-        extra_bi_offset += dtb_size;
-    }
-
-    if (extra_bi_size > extra_bi_offset) {
-        /* provide a chunk for any leftover padding in the extended boot info */
-        header.id = SEL4_BOOTINFO_HEADER_PADDING;
-        header.len = (extra_bi_size - extra_bi_offset);
-        *(seL4_BootInfoHeader *)(rootserver.extra_bi + extra_bi_offset) = header;
-    }
+    (void)extra_bi_helper(extra_bi_size, dtb_phys_addr, dtb_size);
 
 #ifdef CONFIG_TK1_SMMU
     ndks_boot.bi_frame->ioSpaceCaps = create_iospace_caps(root_cnode_cap);
