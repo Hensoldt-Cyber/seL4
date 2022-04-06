@@ -67,52 +67,52 @@
 
 .section .boot.text
 BEGIN_FUNC(_start)
-    /* Save x4 and x5 so we don't clobber it */
-    mov     x7, x4
-    mov     x8, x5
 
     /* Make sure interrupts are disabled */
     msr daifset, #DAIFSET_MASK
 
     /* Initialise sctlr_el1 or sctlr_el2 register */
     msr     spsel, #1
-    mrs     x4, SCTLR
-    ldr     x19, =CR_BITS_SET
-    ldr     x20, =CR_BITS_CLEAR
-    orr     x4, x4, x19
-    bic     x4, x4, x20
-    msr     SCTLR, x4
+    mrs     x9, SCTLR
+    ldr     x10, =CR_BITS_SET
+    ldr     x11, =CR_BITS_CLEAR
+    orr     x9, x9, x10
+    bic     x9, x9, x11
+    msr     SCTLR, x9
+
+    ldr     x9, =kernel_stack_alloc
 
 #ifdef ENABLE_SMP_SUPPORT
-    /* tpidr_el1 has the logic ID of the core, starting from 0 */
-    mrs     x6, tpidr_el1
-    /* Set the sp for each core assuming linear indices */
-    ldr     x5, =BIT(CONFIG_KERNEL_STACK_BITS)
-    mul     x5, x5, x6
-    ldr     x4, =kernel_stack_alloc + BIT(CONFIG_KERNEL_STACK_BITS)
-    add     x4, x4, x5
-    mov     sp, x4
+
+    /* The kernel loader is supposed to initialize tpidr_el1 with the logical
+     * core ID, counting starts at 0. Set the sp for each core.
+     *   sp = {stack base} + {stack_size}
+     *      = kernel_stack_alloc + (core_id * {stack_size}) + {stack_size}
+     *      = kernel_stack_alloc + ((core_id + 1) * {stack_size})
+     *      = kernel_stack_alloc + ((core_id + 1) * (1 << CONFIG_KERNEL_STACK_BITS)
+     *      = kernel_stack_alloc + ((core_id + 1) << CONFIG_KERNEL_STACK_BITS)
+     */
+    mrs     x10, tpidr_el1 /* x10 = logical core ID (starting at 0) */
+    addi    x11, x10, 1    /* x11 = x10 + 1 */
+
+#else /* not ENABLE_SMP_SUPPORT */
+
+    mov     x11, 1
+
+#endif /* [not] ENABLE_SMP_SUPPORT */
+
+    ldr     x12, =CONFIG_KERNEL_STACK_BITS
+    lsl     x11, x12, x11
+    add     x9, x9, x11
+    mov     sp, x9
     /* the kernel stack must be 4-KiB aligned since we use the
        lowest 12 bits to store the logical core ID. */
-    orr     x6, x6, x4
+    orr     x10, x10, x9
 #ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
-    msr     tpidr_el2, x6
+    msr     tpidr_el2, x10
 #else
-    msr     tpidr_el1, x6
+    msr     tpidr_el1, x10
 #endif
-#else
-    ldr    x4, =kernel_stack_alloc + BIT(CONFIG_KERNEL_STACK_BITS)
-    mov    sp, x4
-#endif /* ENABLE_SMP_SUPPORT */
-
-    /* Attempt to workaround any known ARM errata. */
-    stp     x0, x1, [sp, #-16]!
-    stp     x2, x3, [sp, #-16]!
-    stp     x7, x8, [sp, #-16]!
-    bl arm_errata
-    ldp     x4, x5, [sp], #16
-    ldp     x2, x3, [sp], #16
-    ldp     x0, x1, [sp], #16
 
     /* Call bootstrapping implemented in C with parameters:
      *  x0: user image physical start address

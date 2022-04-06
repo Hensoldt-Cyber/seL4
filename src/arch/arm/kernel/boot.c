@@ -205,6 +205,8 @@ BOOT_CODE void arch_release_secondary_cores(void)
 }
 #endif /* ENABLE_SMP_SUPPORT */
 
+extern void arm_errata(void);
+
 BOOT_CODE VISIBLE void init_kernel(
     paddr_t ui_phys_start,
     paddr_t ui_phys_end,
@@ -214,6 +216,7 @@ BOOT_CODE VISIBLE void init_kernel(
     uint32_t dtb_size
 )
 {
+    arm_errata();
     /* Assume there is a core with ID 0 and use it for bootstrapping. */
     if (likely(0 == CURRENT_CPU_INDEX())) {
         map_kernel_window();
