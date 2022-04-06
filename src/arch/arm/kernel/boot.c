@@ -206,11 +206,11 @@ BOOT_CODE void arch_release_secondary_cores(void)
 #endif /* ENABLE_SMP_SUPPORT */
 
 BOOT_CODE VISIBLE void init_kernel(
-    paddr_t ui_p_reg_start,
-    paddr_t ui_p_reg_end,
-    sword_t pv_offset,
-    vptr_t  v_entry,
-    paddr_t dtb_addr_p,
+    paddr_t ui_phys_start,
+    paddr_t ui_phys_end,
+    sword_t ui_pv_offset,
+    vptr_t  ui_virt_entry,
+    paddr_t dtb_phys_addr,
     uint32_t dtb_size
 )
 {
@@ -234,8 +234,8 @@ BOOT_CODE VISIBLE void init_kernel(
          * thread on the primary core. All other cores can just run the idle
          * thread.
          */
-        if (!setup_kernel(ui_p_reg_start, ui_p_reg_end, pv_offset, v_entry,
-                          dtb_addr_p, dtb_size)) {
+        if (!setup_kernel(ui_phys_start, ui_phys_end, ui_pv_offset,
+                          ui_virt_entry, dtb_phys_addr, dtb_size)) {
             fail("ERROR: kernel init failed on primary core");
             UNREACHABLE();
         }
