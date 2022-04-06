@@ -1294,9 +1294,10 @@ BOOT_CODE bool_t setup_kernel(
         }
     }
 
+    /* ensure the userland image area is page aligned */
     p_region_t ui_p_reg = {
-        .start = ui_p_reg_start,
-        .end   = ui_p_reg_end
+        .start = ROUND_DOWN(ui_p_reg_start, PAGE_BITS),
+        .end   = ROUND_UP(ui_p_reg_end, PAGE_BITS),
     };
     /* reserve the user image region */
     if (!setup_reserve_region(ui_p_reg)) {
