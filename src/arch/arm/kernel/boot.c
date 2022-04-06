@@ -35,42 +35,57 @@ BOOT_BSS static volatile int node_boot_lock;
 #endif /* ENABLE_SMP_SUPPORT */
 
 
+BOOT_CODE static void init_core_interrupts(word_t core_id)
+{
+    /* Initialize the architecture specific interrupts. The primary core
+     * initializes its PPIs and all platform interrupts, the secondary
+     * cores initialize their PPIs only. The IRQ cap control init is done
+     * in the generic kernel setup once this returns.
+     */
+    word_t max = SMP_TERNARY((0 == core_id) ? maxIRQ : NUM_PPI, maxIRQ);
+    for (word_t i = 0; i < max; i++) {
+        maskInterrupt(true, CORE_IRQ_TO_IRQT(core_id, i));
+    }
+
+    /* Enable per-CPU timer interrupts */
+    setIRQState(IRQTimer, CORE_IRQ_TO_IRQT(core_id, KERNEL_TIMER_IRQ));
+
+#ifdef ENABLE_SMP_SUPPORT
+    setIRQState(IRQIPI, CORE_IRQ_TO_IRQT(core_id, irq_remote_call_ipi));
+    setIRQState(IRQIPI, CORE_IRQ_TO_IRQT(core_id, irq_reschedule_ipi));
+#endif /* ENABLE_SMP_SUPPORT */
+
+#ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
+    setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(core_id, INTERRUPT_VGIC_MAINTENANCE));
+    setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(core_id, INTERRUPT_VTIMER_EVENT));
+#endif /* CONFIG_ARM_HYPERVISOR_SUPPORT */
+}
+
 BOOT_CODE void arch_init_irqs(cap_t root_cnode_cap)
 {
     /* Initialize the architecture specific interrupts, The IRQ cap control init
      * is done in the generic kernel setup once this returns.
      */
+    init_core_interrupts(0); /* we are on the the primary core here */
 
-    unsigned i;
-
-    for (i = 0; i <= maxIRQ ; i++) {
-        setIRQState(IRQInactive, CORE_IRQ_TO_IRQT(0, i));
-    }
-    setIRQState(IRQTimer, CORE_IRQ_TO_IRQT(0, KERNEL_TIMER_IRQ));
-#ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
-    setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(0, INTERRUPT_VGIC_MAINTENANCE));
-    setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(0, INTERRUPT_VTIMER_EVENT));
-#endif
 #ifdef CONFIG_TK1_SMMU
     setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(0, INTERRUPT_SMMU));
 #endif
 
 #ifdef CONFIG_ARM_ENABLE_PMU_OVERFLOW_INTERRUPT
-#ifdef KERNEL_PMU_IRQ
-    setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(0, KERNEL_PMU_IRQ));
+
 #if (defined CONFIG_PLAT_TX1 && defined ENABLE_SMP_SUPPORT)
 //SELFOUR-1252
 #error "This platform doesn't support tracking CPU utilisation on multicore"
 #endif /* CONFIG_PLAT_TX1 && ENABLE_SMP_SUPPORT */
-#else
-#error "This platform doesn't support tracking CPU utilisation feature"
-#endif /* KERNEL_TIMER_IRQ */
-#endif /* CONFIG_ARM_ENABLE_PMU_OVERFLOW_INTERRUPT */
 
-#ifdef ENABLE_SMP_SUPPORT
-    setIRQState(IRQIPI, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), irq_remote_call_ipi));
-    setIRQState(IRQIPI, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), irq_reschedule_ipi));
-#endif
+#ifndef KERNEL_PMU_IRQ
+#error "This platform doesn't support tracking CPU utilisation feature"
+#endif /* not KERNEL_PMU_IRQ */
+
+    setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(0, KERNEL_PMU_IRQ));
+
+#endif /* CONFIG_ARM_ENABLE_PMU_OVERFLOW_INTERRUPT */
 }
 
 #ifdef CONFIG_ARM_SMMU
@@ -123,7 +138,7 @@ BOOT_CODE static bool_t init_cpu(void)
     word_t stack_top = ((word_t) kernel_stack_alloc[CURRENT_CPU_INDEX()]) + BIT(CONFIG_KERNEL_STACK_BITS);
 #if defined(ENABLE_SMP_SUPPORT) && defined(CONFIG_ARCH_AARCH64)
     /* the least 12 bits are used to store logical core ID */
-    stack_top |= getCurrentCPUIndex();
+    stack_top |= CURRENT_CPU_INDEX();
 #endif
     setKernelStack(stack_top);
 
@@ -164,52 +179,7 @@ BOOT_CODE static bool_t init_cpu(void)
     return true;
 }
 
-/* This and only this function initialises the platform. It does NOT initialise any kernel state. */
-
-BOOT_CODE static void init_plat(void)
-{
-    initIRQController();
-    initL2Cache();
-#ifdef CONFIG_ARM_SMMU
-    plat_smmu_init();
-#endif
-}
-
 #ifdef ENABLE_SMP_SUPPORT
-BOOT_CODE static bool_t try_init_kernel_secondary_core(void)
-{
-    unsigned i;
-
-    /* need to first wait until some kernel init has been done */
-    while (!node_boot_lock);
-
-    /* Perform cpu init */
-    init_cpu();
-
-    for (i = 0; i < NUM_PPI; i++) {
-        maskInterrupt(true, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), i));
-    }
-    setIRQState(IRQIPI, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), irq_remote_call_ipi));
-    setIRQState(IRQIPI, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), irq_reschedule_ipi));
-    /* Enable per-CPU timer interrupts */
-    setIRQState(IRQTimer, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), KERNEL_TIMER_IRQ));
-#ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
-    setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), INTERRUPT_VGIC_MAINTENANCE));
-    setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), INTERRUPT_VTIMER_EVENT));
-#endif /* CONFIG_ARM_HYPERVISOR_SUPPORT */
-
-    /* Call the generic kernel setup. It assumes the BKL has been initialized
-     * but this core is not holding it. Eventually, is acquires the BKL and
-     * returns while still holding it. There is no need to release the BKL
-     * explicitly, exiting to user space will do this automatically.
-     */
-    setup_kernel_on_secondary_core();
-
-    /* Nothing architecture specific to be done here. */
-
-    return true;
-}
-
 BOOT_CODE void arch_release_secondary_cores(void)
 {
     /* All secondary harts are released at the same time. The generic kernel
@@ -235,47 +205,6 @@ BOOT_CODE void arch_release_secondary_cores(void)
 }
 #endif /* ENABLE_SMP_SUPPORT */
 
-/* Main kernel initialisation function. */
-
-static BOOT_CODE bool_t try_init_kernel(
-    paddr_t ui_p_reg_start,
-    paddr_t ui_p_reg_end,
-    sword_t pv_offset,
-    vptr_t  v_entry,
-    paddr_t dtb_phys_addr,
-    word_t  dtb_size
-)
-{
-    /* setup virtual memory for the kernel */
-    map_kernel_window();
-
-    /* initialise the CPU */
-    if (!init_cpu()) {
-        printf("ERROR: CPU init failed\n");
-        return false;
-    }
-
-    /* initialise the platform */
-    init_plat();
-
-    /* Debug output via serial port is only available from here on. */
-
-    /* Call the generic kernel setup. It will release the secondary cores and
-     * boot them. They may have left to userspace already when we return here.
-     * This is fine, because the only thread at this stage is the initial thread
-     * on the primary core. All other cores can just run the idle thread.
-     */
-    if (!setup_kernel(ui_p_reg_start, ui_p_reg_end, pv_offset, v_entry,
-                      dtb_phys_addr, dtb_size)) {
-        printf("ERROR: kernel initialization failed\n");
-        return false;
-    }
-
-    /* Nothing architecture specific to be done here. */
-
-    return true;
-}
-
 BOOT_CODE VISIBLE void init_kernel(
     paddr_t ui_p_reg_start,
     paddr_t ui_p_reg_end,
@@ -285,38 +214,63 @@ BOOT_CODE VISIBLE void init_kernel(
     uint32_t dtb_size
 )
 {
-    bool_t result;
-
-#ifdef ENABLE_SMP_SUPPORT
-    /* we assume there exists a cpu with id 0 and will use it for bootstrapping */
-    if (getCurrentCPUIndex() == 0) {
-        result = try_init_kernel(ui_p_reg_start,
-                                 ui_p_reg_end,
-                                 pv_offset,
-                                 v_entry,
-                                 dtb_addr_p, dtb_size);
+    /* Assume there is a core with ID 0 and use it for bootstrapping. */
+    if (likely(0 == CURRENT_CPU_INDEX())) {
+        map_kernel_window();
+        if (!init_cpu()) {
+            fail("ERROR: CPU init failed\n");
+            UNREACHABLE();
+        }
+        /* Platform initialization */
+        initIRQController();
+        initL2Cache();
+#ifdef CONFIG_ARM_SMMU
+        plat_smmu_init();
+#endif /* CONFIG_ARM_SMMU */
+        /* Debug output via serial port is only available from here on. Call the
+         * generic kernel setup. It will release the secondary cores and boot
+         * them. They may have left to userspace already when we return here.
+         * This is fine, because the only thread at this stage is the initial
+         * thread on the primary core. All other cores can just run the idle
+         * thread.
+         */
+        if (!setup_kernel(ui_p_reg_start, ui_p_reg_end, pv_offset, v_entry,
+                          dtb_addr_p, dtb_size)) {
+            fail("ERROR: kernel init failed on primary core");
+            UNREACHABLE();
+        }
+        /* Nothing architecture specific to be done here. */
     } else {
-        result = try_init_kernel_secondary_core();
-    }
-
-#else
-    result = try_init_kernel(ui_p_reg_start,
-                             ui_p_reg_end,
-                             pv_offset,
-                             v_entry,
-                             dtb_addr_p, dtb_size);
-
-#endif /* ENABLE_SMP_SUPPORT */
-
-    if (!result) {
-        fail("ERROR: kernel init failed");
+#ifdef ENABLE_SMP_SUPPORT
+        /* Spin until primary hart boot releases the secondary harts. */
+        while (!node_boot_lock) {
+            /* busy waiting loop */
+        }
+        if (!init_cpu()) {
+            fail("ERROR: kernel init failed on primary core");
+            UNREACHABLE();
+        }
+        init_cpu();
+        init_core_interrupts(CURRENT_CPU_INDEX());
+        /* Call the generic kernel setup. It assumes the primary code boot has
+         * been done and the BKL has been initialized, but this core is not
+         * holding it. Eventually, the setup acquires the BKL and returns while
+         * still holding it. There is no need to release the BKL explicitly,
+         * exiting to user space will do this automatically.
+         */
+        setup_kernel_on_secondary_core();
+        /* Nothing architecture specific to be done here. */
+#else /* not ENABLE_SMP_SUPPORT */
+        fail("ERROR: SMP no enabled\n");
         UNREACHABLE();
+#endif /* [not] ENABLE_SMP_SUPPORT */
     }
 
 #ifdef CONFIG_KERNEL_MCS
     NODE_STATE(ksCurTime) = getCurrentTime();
     NODE_STATE(ksConsumed) = 0;
 #endif
+
     schedule();
     activateThread();
 }
