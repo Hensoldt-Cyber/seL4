@@ -11,7 +11,28 @@ declare_platform(qemu-arm-virt KernelPlatformQEMUArmVirt PLAT_QEMU_ARM_VIRT Kern
 set(MIN_QEMU_VERSION "3.1.0")
 
 set(qemu_user_top 0xa0000000)
+
 if(KernelPlatformQEMUArmVirt)
+
+    if(NOT ARM_CPU)
+        message(STATUS "ARM_CPU not set, defaulting to cortex-a53")
+        set(ARM_CPU "cortex-a53")
+    endif()
+
+    if("${ARM_CPU}" STREQUAL "cortex-a7")
+        if("${KernelSel4Arch}" STREQUAL aarch32)
+            declare_seL4_arch(aarch32)
+        elseif("${KernelSel4Arch}" STREQUAL arm_hyp)
+            declare_seL4_arch(arm_hyp)
+        else()
+            fallback_declare_seL4_arch_default(aarch32)
+        endif()
+        if(KernelSel4ArchArmHyp)
+            set(qemu_user_top 0xe0000000)
+        endif()
+        set(QEMU_ARCH "arm")
+        set(KernelArmCortexA7 ON)
+        set(KernelArchArmV7a ON)
     if("${ARM_CPU}" STREQUAL "cortex-a15")
         if("${KernelSel4Arch}" STREQUAL aarch32)
             declare_seL4_arch(aarch32)
@@ -37,14 +58,15 @@ if(KernelPlatformQEMUArmVirt)
         set(QEMU_ARCH "aarch64")
         set(KernelArmCortexA57 ON)
         set(KernelArchArmV8a ON)
-    else()
-        message(STATUS "Default cpu specified for virt board: cortex-a53")
+    elseif("${ARM_CPU}" STREQUAL "cortex-a72")
         declare_seL4_arch(aarch64)
-        set(ARM_CPU "cortex-a53")
         set(QEMU_ARCH "aarch64")
-        set(KernelArmCortexA53 ON)
+        set(KernelArmCortexA72 ON)
         set(KernelArchArmV8a ON)
+    else()
+        message(FATAL_ERROR "Unsupported ARM_CPU for QEMU: '${ARM_CPU}'")
     endif()
+
     execute_process(
         COMMAND qemu-system-${QEMU_ARCH} -version
         OUTPUT_VARIABLE QEMU_VERSION_STR
