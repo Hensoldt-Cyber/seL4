@@ -169,14 +169,11 @@ endforeach()
 # Verify that, as a minimum any variables that are used
 # to find other build files are actually defined at this
 # point. This means at least: KernelArch KernelWordSize
-
-if("${KernelArch}" STREQUAL "")
-    message(FATAL_ERROR "Variable 'KernelArch' is not set.")
-endif()
-
-if("${KernelWordSize}" STREQUAL "")
-    message(FATAL_ERROR "Variable 'KernelWordSize' is not set.")
-endif()
+foreach(var IN ITEMS KernelArch KernelWordSize)
+    if ("${${var}}" STREQUAL "")
+        message(FATAL_ERROR "Variable '${var}' is not set.")
+    endif()
+endforeach()
 
 config_choice(KernelPlatform PLAT "Select the platform" ${kernel_platforms})
 
