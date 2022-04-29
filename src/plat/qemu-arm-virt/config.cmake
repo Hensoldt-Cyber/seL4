@@ -141,7 +141,7 @@ if(KernelPlatformQEMUArmVirt)
                 # 2 GiB, which seems a good trade-off nowadays. It's sufficient
                 # for test/demo systems, but still something the host can
                 # provide without running short on resources.
-                set(QEMU_MEMORY "1024")
+                set(QEMU_MEMORY "3072")
             endif()
 
             if(KernelMaxNumNodes)
