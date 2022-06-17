@@ -660,6 +660,7 @@ BOOT_CODE static bool_t create_untypeds_for_phys_region(
          * be used anyway.
          */
         if (size_bits >= seL4_MinUntypedBits) {
+            printf("untyped: %p / %d\n", (void *)reg.start, size_bits);
             if (!provide_untyped_cap(root_cnode_cap, device_memory,
                                      reg.start, size_bits, first_untyped_slot)) {
                 return false;
