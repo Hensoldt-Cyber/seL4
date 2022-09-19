@@ -33,6 +33,10 @@ HEADER_TEMPLATE = '''/*
 
 #pragma once
 
+/* This is the physical address of the lowest memory region that is available
+ * from all regions listed in avail_p_regs. Platform may use this address
+ * instead of zero to start mapping memory.
+ */
 #define physBase {{ "0x{:x}".format(kernel_phy_base) }}
 
 #ifndef __ASSEMBLER__
