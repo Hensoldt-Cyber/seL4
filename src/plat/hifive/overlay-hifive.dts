@@ -27,5 +27,16 @@
             reg = <0x80000000 0x200000>;
             no-map;
         };
+
+        /* Reserve 2 MiB for the Elfloader after SBI (0x82000000 - 0x84000000).
+         * Since "no-map" is not given, this memory can be re-used by the kernel
+         * once control has been handed over
+         */
+        elfloader@82000000 {
+            device_type = "elfloader";
+            reg = <0x82000000 0x200000>;
+        };
+
     };
+
 };
