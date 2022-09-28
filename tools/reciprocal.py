@@ -13,27 +13,39 @@
 
 # for details on how this script works,
 # see Hacker's delight, Chapter 10, unsigned division.
-from math import floor, ceil
 import argparse
-import sys
-from past.builtins import xrange
-
-# now unsigned
 
 
-def magicgu(nmax, d):
+def magicgu(nmax: int, d: int)  -> (int, int):
     nc = ((nmax + 1)//d)*d - 1
     nbits = len(bin(nmax)) - 2
     for p in range(0, 2*nbits + 1):
         if 2**p > nc*(d - 1 - (2**p - 1) % d):
             m = (2**p + d - 1 - (2**p - 1) % d)//d
             return (m, p)
-    print("Can't find p, something is wrong.")
-    sys.exit(1)
+    raise ValueError("Can't find p, something is wrong.")
 
 
-def do_div(n):
-    return ((n + add_ind) * magic) >> shift_amt
+def do_div(n: int, magic: int, shift_amt: int) -> int:
+    return (n  * magic) >> shift_amt
+
+
+def calculate_recipocal(divisor: int):
+    nmax = 2**32 - 1
+    magic, shift_amt = magicgu(nmax, divisor)
+    print(f'magic number is: {magic}, shift amount is {shift_amt}')
+    # sanity check
+    print("Doing sanity check for all 32-bit numbers")
+    for i in range(nmax):
+        if (i > 0) and (0 == (i & 0x1FFFFFF)):
+            print(f'{100*(i/nmax):5.2f}%')
+        q1 = i // divisor
+        q2 = do_div(i, magic, shift_amt)
+        if q1 != q2:
+            raise ValueError(f'Combination failed for i={i}, q1={q1}, q2={q2}')
+
+    print(f'Success! Use (n * {magic}) >> {shift_amt} to calculate n / {divisor}')
+    print(f'magic number is: {magic}, shift amount is {shift_amt}')
 
 
 if __name__ == "__main__":
@@ -42,18 +54,4 @@ if __name__ == "__main__":
     parser.add_argument("--divisor", type=int, required=True,
                         help="Devisor to calculate magic numbers for")
     args = parser.parse_args()
-
-    magic, shift_amt = magicgu(2**32 - 1, args.divisor)
-    print("magic number is: %d, shift amount is %d" % (magic, shift_amt))
-    add_ind = 0
-
-    print("Doing sanity check")
-    # sanity check
-    for i in xrange(2**32-1):
-        q1, q2 = (i / args.divisor, do_div(i))
-        if int(q1) != q2:
-            print("Combination failed %d %d %d" % i, q1, q2)
-            sys.exit(-1)
-
-    print("Success! Use (n * %d) >> %d to calculate n / %d" % (magic, shift_amt, args.divisor))
-    print("magic number is: %d, shift amount is %d" % (magic, shift_amt))
+    calculate_recipocal(args.divisor)
