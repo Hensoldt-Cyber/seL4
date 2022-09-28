@@ -460,12 +460,12 @@ static BOOT_CODE bool_t try_init_kernel(
     }
 
     if (config_set(CONFIG_TK1_SMMU)) {
-        ndks_boot.bi_frame->ioSpaceCaps = create_iospace_caps(root_cnode_cap);
-        if (ndks_boot.bi_frame->ioSpaceCaps.start == 0 &&
-            ndks_boot.bi_frame->ioSpaceCaps.end == 0) {
+        seL4_SlotRegion reg = create_iospace_caps(root_cnode_cap);
+        if ((reg.start == 0) && (reg.end == 0)) {
             printf("ERROR: SMMU I/O space creation failed\n");
             return false;
         }
+        ndks_boot.bi_frame->ioSpaceCaps = reg;
     }
 
     /* Construct an initial address space with enough virtual addresses
