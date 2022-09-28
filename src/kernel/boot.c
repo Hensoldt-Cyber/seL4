@@ -356,6 +356,7 @@ BOOT_CODE void populate_bi_frame(node_id_t node_id, word_t num_nodes,
 
     /* initialise bootinfo-related global state */
     seL4_BootInfo *bi = BI_PTR(rootserver.boot_info);
+
     bi->nodeID = node_id;
     bi->numNodes = num_nodes;
     bi->numIOPTLevels = 0;
@@ -363,6 +364,19 @@ BOOT_CODE void populate_bi_frame(node_id_t node_id, word_t num_nodes,
     bi->initThreadCNodeSizeBits = CONFIG_ROOT_CNODE_SIZE_BITS;
     bi->initThreadDomain = ksDomSchedule[ksDomScheduleIdx].domain;
     bi->extraLen = extra_bi_size;
+    /* Technically, setting S_REG_EMPTY is not necessary, because this sets all
+     * fields to zero, which should be the state after clearMemory() anyway.
+     */
+    bi->empty = S_REG_EMPTY;
+    bi->sharedFrames = S_REG_EMPTY;
+    bi->userImageFrames = S_REG_EMPTY;
+    bi->userImagePaging = S_REG_EMPTY;
+    bi->ioSpaceCaps = S_REG_EMPTY;
+    bi->extraBIPages = S_REG_EMPTY;
+#ifdef CONFIG_KERNEL_MCS
+    bi->schedcontrol = S_REG_EMPTY;
+#endif
+    bi->untyped = S_REG_EMPTY;
 
     ndks_boot.bi_frame = bi;
     ndks_boot.slot_pos_cur = seL4_NumInitialCaps;

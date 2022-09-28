@@ -478,8 +478,6 @@ static BOOT_CODE bool_t try_init_kernel(
             printf("ERROR: SMMU I/O space creation failed\n");
             return false;
         }
-    } else {
-        ndks_boot.bi_frame->ioSpaceCaps = S_REG_EMPTY;
     }
 
     /* Construct an initial address space with enough virtual addresses
@@ -587,9 +585,6 @@ static BOOT_CODE bool_t try_init_kernel(
         printf("ERROR: could not create untypteds for kernel image boot memory\n");
         return false;
     }
-
-    /* no shared-frame caps (ARM has no multikernel support) */
-    ndks_boot.bi_frame->sharedFrames = S_REG_EMPTY;
 
     /* finalise the bootinfo frame */
     bi_finalise();
