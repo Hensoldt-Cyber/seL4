@@ -1,5 +1,6 @@
 /*
  * Copyright 2014, General Dynamics C4 Systems
+ * Copyright 2021, HENSOLDT Cyber
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -25,7 +26,7 @@ typedef cte_t *slot_ptr_t;
 typedef struct ndks_boot {
     p_region_t reserved[MAX_NUM_RESV_REG];
     word_t resv_count;
-    region_t   freemem[MAX_NUM_FREEMEM_REG];
+    p_region_t   freemem[MAX_NUM_FREEMEM_REG];
     seL4_BootInfo      *bi_frame;
     seL4_SlotPos slot_pos_cur;
 } ndks_boot_t;
@@ -40,7 +41,6 @@ static inline bool_t is_reg_empty(region_t reg)
 }
 
 bool_t init_freemem(word_t n_available, const p_region_t *available,
-                    word_t n_reserved, const region_t *reserved,
                     v_region_t it_v_reg, word_t extra_bi_size_bits);
 bool_t reserve_region(p_region_t reg);
 void write_slot(slot_ptr_t slot_ptr, cap_t cap);
@@ -58,6 +58,10 @@ word_t calculate_extra_bi_size_bits(word_t extra_size);
 void populate_bi_frame(node_id_t node_id, word_t num_nodes, vptr_t ipcbuf_vptr,
                        word_t extra_bi_size_bits);
 void create_bi_frame_cap(cap_t root_cnode_cap, cap_t pd_cap, vptr_t vptr);
+
+seL4_Word add_extra_bootinfo(void *bi, seL4_Word bi_block_id,
+                             void const *data, seL4_Word data_len);
+void add_extra_bootinfo_padding(void *bi, seL4_Word len);
 
 #ifdef CONFIG_KERNEL_MCS
 bool_t init_sched_control(cap_t root_cnode_cap, word_t num_nodes);
@@ -135,3 +139,27 @@ static inline BOOT_CODE pptr_t it_alloc_paging(void)
 
 /* return the amount of paging structures required to cover v_reg */
 word_t arch_get_n_paging(v_region_t it_veg);
+
+bool_t setup_reserve_region(p_region_t reg);
+
+#if defined(CONFIG_ARCH_ARM) || defined(CONFIG_ARCH_RISCV)
+
+void arch_init_irqs(cap_t root_cnode_cap);
+#ifdef CONFIG_ARM_SMMU
+void arch_init_smmu(cap_t root_cnode_cap);
+#endif
+
+#ifdef ENABLE_SMP_SUPPORT
+void arch_release_secondary_cores(void);
+void setup_kernel_on_secondary_core(void);
+#endif /* ENABLE_SMP_SUPPORT */
+
+bool_t setup_kernel(
+    paddr_t ui_p_reg_start,
+    paddr_t ui_p_reg_end,
+    word_t pv_offset,
+    vptr_t  v_entry,
+    paddr_t dtb_phys_addr,
+    word_t  dtb_size);
+
+#endif /* CONFIG_ARCH_ARM || CONFIG_ARCH_RISCV */
