@@ -29,9 +29,10 @@ void VISIBLE NORETURN restore_user_context(void)
     asm volatile(
         "mov     sp, %0                     \n"
 
-        /* Restore thread's SPSR, LR, and SP */
+        /* Restore thread's SPSR, LR, SP, TPIDR_EL0 and TPIDRRO_EL0 */
         "ldp     x21, x22, [sp, %[SP_EL0]] \n"
         "ldr     x23, [sp, %[SPSR_EL1]]    \n"
+        "ldp     x24, x25, [sp, %[TPIDR_EL0]] \n"
         "msr     sp_el0, x21                \n"
 #ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
         "msr     elr_el2, x22               \n"
@@ -40,6 +41,9 @@ void VISIBLE NORETURN restore_user_context(void)
         "msr     elr_el1, x22               \n"
         "msr     spsr_el1, x23              \n"
 #endif
+        "msr     tpidr_el0, x24             \n"
+        "msr     tpidrro_el0, x25           \n"
+
         /* Restore remaining registers */
         "ldp     x0,  x1,  [sp, #16 * 0]    \n"
         "ldp     x2,  x3,  [sp, #16 * 1]    \n"
@@ -60,7 +64,8 @@ void VISIBLE NORETURN restore_user_context(void)
         "eret"
         :
         : "r"(NODE_STATE(ksCurThread)->tcbArch.tcbContext.registers),
-        [SP_EL0] "i"(PT_SP_EL0), [SPSR_EL1] "i"(PT_SPSR_EL1), [LR] "i"(PT_LR)
+        [SP_EL0] "i"(PT_SP_EL0), [SPSR_EL1] "i"(PT_SPSR_EL1),
+        [TPIDR_EL0] "i"(PT_TPIDR_EL0), [LR] "i"(PT_LR)
         : "memory"
     );
     UNREACHABLE();
