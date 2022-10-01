@@ -87,12 +87,15 @@ END_FUNC(arm_vector_table)
     stp     x26, x27, [sp, #16 * 13]
     stp     x28, x29, [sp, #16 * 14]
 
-    /* Store thread's SPSR, LR, and SP */
+    /* Store thread's SPSR, LR, SP, TPIDR_EL0 and TPIDRRO_EL0 */
     mrs     x21, sp_el0
     mrs     x22, ELR
     mrs     x23, SPSR
+    mrs     x24, TPIDR_EL0
+    mrs     x25, TPIDRRO_EL0
     stp     x30, x21, [sp, #PT_LR]
     stp     x22, x23, [sp, #PT_ELR_EL1]
+    stp     x24, x25, [sp, #PT_TPIDR_EL0]
 .endm
 
 BEGIN_FUNC(invalid_vector_entry)
