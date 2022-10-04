@@ -126,13 +126,14 @@ static inline void NORETURN FORCE_INLINE fastpath_restore(word_t badge, word_t m
     lazyFPURestore(cur_thread);
 #endif /* CONFIG_HAVE_FPU */
 
+    register word_t cur_thread_reg  = (word_t)cur_thread->tcbArch.tcbContext.registers;
+
     register word_t badge_reg asm("r0") = badge;
     register word_t msgInfo_reg asm("r1") = msgInfo;
-    register word_t cur_thread_reg asm("r2") = (word_t)cur_thread->tcbArch.tcbContext.registers;
 
     if (config_set(CONFIG_ARM_HYPERVISOR_SUPPORT)) {
         asm volatile( /* r0 and r1 should be preserved */
-            "mov sp, r2         \n"
+            "mov sp, %[cur_thread_reg] \n"
             /* Pop user registers, preserving r0 and r1 */
             "add sp, sp, #8     \n"
             "pop {r2-r12}       \n"
@@ -151,22 +152,23 @@ static inline void NORETURN FORCE_INLINE fastpath_restore(word_t badge, word_t m
             "eret"
             :
             : [badge] "r"(badge_reg),
-            [msginfo]"r"(msgInfo_reg),
-            [cur_thread]"r"(cur_thread_reg)
+              [msginfo] "r"(msgInfo_reg),
+              [cur_thread_reg] "r"(cur_thread_reg)
             : "memory"
         );
     } else {
-        asm volatile("mov sp, r2 \n\
-                  add sp, sp, %[LR_SVC_OFFSET] \n\
-                  ldmdb sp, {r2-lr}^ \n\
-                  rfeia sp"
-                     :
-                     : [badge]"r"(badge_reg),
-                     [msginfo]"r"(msgInfo_reg),
-                     [cur_thread]"r"(cur_thread_reg),
-                     [LR_SVC_OFFSET]"i"(NextIP * sizeof(word_t))
-                     : "memory"
-                    );
+        asm volatile(
+            "mov sp, %[cur_thread_reg] \n"
+            "add sp, sp, %[LR_SVC_OFFSET] \n"
+            "ldmdb sp, {r2-lr}^ \n"
+            "rfeia sp"
+            :
+            : [badge] "r"(badge_reg),
+            [msginfo] "r"(msgInfo_reg),
+            [cur_thread_reg] "r"(cur_thread_reg),
+            [LR_SVC_OFFSET]"i"(NextIP * sizeof(word_t))
+            : "memory"
+        );
     }
     UNREACHABLE();
 }
