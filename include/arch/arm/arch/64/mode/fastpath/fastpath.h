@@ -145,10 +145,9 @@ static inline void NORETURN FORCE_INLINE fastpath_restore(word_t badge, word_t m
 
     register word_t badge_reg asm("x0") = badge;
     register word_t msgInfo_reg asm("x1") = msgInfo;
-    register word_t cur_thread_reg asm("x2") = (word_t)cur_thread->tcbArch.tcbContext.registers;
 
     asm volatile(
-        "mov     sp, x2                     \n"
+        "mov     sp, %[cur_thread_reg]      \n"
 
         /* Restore thread's SPSR, LR, SP, TPIDR_EL0 and TPIDRRO_EL0 */
         "ldp     x30, x21, [sp, %[LR]] \n"
@@ -182,7 +181,9 @@ static inline void NORETURN FORCE_INLINE fastpath_restore(word_t badge, word_t m
         "ldp     x28, x29, [sp, #16 * 14]   \n"
         "eret                                 "
         :
-        : "r"(badge_reg), "r"(msgInfo_reg), "r"(cur_thread_reg),
+        : "r"(badge_reg),
+        "r"(msgInfo_reg),
+        [cur_thread_reg]"r"(cur_thread->tcbArch.tcbContext.registers),
         [LR] "i"(PT_LR), [ELR_EL1] "i"(PT_ELR_EL1), [TPIDR_EL0] "i"(PT_TPIDR_EL0)
         : "memory"
     );
