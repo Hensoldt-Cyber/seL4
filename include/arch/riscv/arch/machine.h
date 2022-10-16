@@ -218,7 +218,7 @@ static inline uint32_t read_fcsr(void)
 
 static inline void write_fcsr(uint32_t value)
 {
-    asm volatile("csrw fcsr, %0" :: "rK"(value));
+    asm volatile("csrw fcsr, %0" :: "r"(value));
 }
 #endif
 
