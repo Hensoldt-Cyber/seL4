@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: GPL-2.0-only
 #
 
+set(KERNEL_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/..")
+
 #
 # Architecture selection
 #
@@ -13,8 +15,8 @@ set(asm_sources "")
 set(bf_declarations "")
 set(KernelDTSList "")
 
-include(${CMAKE_CURRENT_LIST_DIR}/../tools/internal.cmake)
-include(${CMAKE_CURRENT_LIST_DIR}/../tools/helpers.cmake)
+include(${KERNEL_ROOT_DIR}/tools/internal.cmake)
+include(${KERNEL_ROOT_DIR}/tools/helpers.cmake)
 
 # Create and set all of the Kernel config options that can be derived from the
 # seL4 arch which is one of the following:
@@ -158,7 +160,7 @@ unset(KernelArmArmV CACHE)
 # Blacklist platforms without MCS support
 set(KernelPlatformSupportsMCS ON)
 
-file(GLOB result ${CMAKE_CURRENT_LIST_DIR}/../src/plat/*/config.cmake)
+file(GLOB result ${KERNEL_ROOT_DIR}/src/plat/*/config.cmake)
 list(SORT result)
 
 foreach(file ${result})
@@ -168,14 +170,11 @@ endforeach()
 # Verify that, as a minimum any variables that are used
 # to find other build files are actually defined at this
 # point. This means at least: KernelArch KernelWordSize
-
-if("${KernelArch}" STREQUAL "")
-    message(FATAL_ERROR "Variable 'KernelArch' is not set.")
-endif()
-
-if("${KernelWordSize}" STREQUAL "")
-    message(FATAL_ERROR "Variable 'KernelWordSize' is not set.")
-endif()
+foreach(var IN ITEMS KernelArch KernelWordSize)
+    if ("${${var}}" STREQUAL "")
+        message(FATAL_ERROR "Variable '${var}' is not set.")
+    endif()
+endforeach()
 
 config_choice(KernelPlatform PLAT "Select the platform" ${kernel_platforms})
 
@@ -242,7 +241,7 @@ if(
     endif()
 
     configure_file(
-        "${CMAKE_CURRENT_LIST_DIR}/../${toolchain_file}" "${toolchain_outputfile}.temp" @ONLY
+        "${KERNEL_ROOT_DIR}/${toolchain_file}" "${toolchain_outputfile}.temp" @ONLY
     )
     if(EXISTS "${toolchain_outputfile}")
         file(READ "${toolchain_outputfile}.temp" filea)
