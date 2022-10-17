@@ -209,16 +209,16 @@ static inline word_t read_sie(void)
     return temp;
 }
 
-static inline void set_sie_mask(word_t mask_high)
+static inline void set_sie_mask(word_t mask)
 {
     word_t temp;
-    asm volatile("csrrs %0, sie, %1" : "=r"(temp) : "rK"(mask_high));
+    asm volatile("csrrs %0, sie, %1" : "=r"(temp) : "rK"(mask));
 }
 
-static inline void clear_sie_mask(word_t mask_low)
+static inline void clear_sie_mask(word_t mask)
 {
     word_t temp;
-    asm volatile("csrrc %0, sie, %1" : "=r"(temp) : "rK"(mask_low));
+    asm volatile("csrrc %0, sie, %1" : "=r"(temp) : "rK"(mask));
 }
 
 #ifdef CONFIG_HAVE_FPU
