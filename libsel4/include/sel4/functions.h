@@ -103,3 +103,24 @@ LIBSEL4_INLINE_FUNC void seL4_SetCapReceivePath(seL4_CPtr receiveCNode, seL4_CPt
     ipcbuffer->receiveDepth = receiveDepth;
 }
 
+#if CONFIG_DEBUG_BUILD
+
+/* Making this a macro avoids requiring stdarg.h to get va_start() */
+#define seL4_DebugNameThreadFmt(tcb, fmt, ...) \
+    do { \
+        char *ipc_buf = (char *)seL4_GetIPCBuffer()->msg; \
+        snprintf(ipc_buf, seL4_MsgMaxLength, fmt, __VA_ARGS__); \
+        seL4_DebugNameThread(tcb, ipc_buf); \
+    } while(0)
+
+// LIBSEL4_INLINE_FUNC void seL4_DebugNameThreadFmt(seL4_CPtr tcb, const char *fmt, ...)
+// {
+//     char *ipc_buf = (char *)seL4_GetIPCBuffer()->msg;
+//     va_list args;
+//     va_start(args, fmt);
+//     vsnprintf(ipc_buf, seL4_MsgMaxLength, fmt, args)
+//     va_end(args);
+//     seL4_DebugNameThread(tcb, ipc_buf);
+// }
+
+#endif /* CONFIG_DEBUG_BUILD */
