@@ -4,10 +4,11 @@
  * SPDX-License-Identifier: GPL-2.0-only
  */
 
+#pragma once
+
 #include <config.h>
 
 #ifdef CONFIG_DEBUG_BUILD
-#pragma once
 
 #include <benchmark/benchmark_track.h>
 #include <arch/api/syscall.h>
