@@ -29,7 +29,7 @@ jobs:
           - march: rv64imac
             compiler: clang
     steps:
-    - uses: seL4/ci-actions/sel4test-sim@master
+    - uses: hensoldt-cyber/ci-actions/sel4test-sim@patch-axel-6
       with:
         march: ${{ matrix.march }}
         compiler: ${{ matrix.compiler }}
