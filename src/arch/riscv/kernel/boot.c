@@ -21,6 +21,16 @@
 #include <machine.h>
 
 #ifdef ENABLE_SMP_SUPPORT
+/* The SMP boot synchronization uses a simple mechanism based on a global
+ * variable with the well defined initial value 0. Secondary cores simply keep
+ * spinning until the primary node has initialized all kernel structures and
+ * then set this variable to 1. This mechanism works, because the C rules define
+ * that uninitialized global variables are zero. Technically, such variables are
+ * put either in the BSS segment filled with zeros or the data segment. Both
+ * segments are set up by a previous kernel loader. Any runtime initialization
+ * in the kernel boot code wont work for the SMP synchronization due to a race
+ * condition if all nodes start in an undefined order.
+ */
 BOOT_BSS static volatile word_t node_boot_lock;
 #endif
 
@@ -168,6 +178,7 @@ BOOT_CODE static bool_t try_init_kernel_secondary_core(word_t hart_id, word_t co
 
 BOOT_CODE static void release_secondary_cores(void)
 {
+    assert(0 == node_boot_lock); /* Sanity check for a proper lock state. */
     node_boot_lock = 1;
     fence_w_r();
 

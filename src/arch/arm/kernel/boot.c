@@ -29,8 +29,16 @@
 #endif
 
 #ifdef ENABLE_SMP_SUPPORT
-/* sync variable to prevent other nodes from booting
- * until kernel data structures initialized */
+/* The SMP boot synchronization uses a simple mechanism based on a global
+ * variable with the well defined initial value 0. Secondary cores simply keep
+ * spinning until the primary node has initialized all kernel structures and
+ * then set this variable to 1. This mechanism works, because the C rules define
+ * that uninitialized global variables are zero. Technically, such variables are
+ * put either in the BSS segment filled with zeros or the data segment. Both
+ * segments are set up by a previous kernel loader. Any runtime initialization
+ * in the kernel boot code wont work for the SMP synchronization due to a race
+ * condition if all nodes start in an undefined order.
+ */
 BOOT_BSS static volatile int node_boot_lock;
 #endif /* ENABLE_SMP_SUPPORT */
 
@@ -286,6 +294,7 @@ BOOT_CODE static void release_secondary_cpus(void)
 {
 
     /* release the cpus at the same time */
+    assert(0 == node_boot_lock); /* Sanity check for a proper lock state. */
     node_boot_lock = 1;
 
 #ifndef CONFIG_ARCH_AARCH64
