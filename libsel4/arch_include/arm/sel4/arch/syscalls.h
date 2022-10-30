@@ -629,10 +629,14 @@ LIBSEL4_INLINE_FUNC seL4_Uint32 seL4_DebugCapIdentify(seL4_CPtr cap)
     return (seL4_Uint32)cap;
 }
 
-char *strcpy(char *, const char *);
+char *strncpy(char *, const char *, seL4_Word);
 LIBSEL4_INLINE_FUNC void seL4_DebugNameThread(seL4_CPtr tcb, const char *name)
 {
-    strcpy((char *)seL4_GetIPCBuffer()->msg, name);
+    /* IPC buffer can be used directly, otherwise buffers must not overlap. */
+    char *ipc_buf = (char *)seL4_GetIPCBuffer()->msg;
+    if (name != ipc_buf) {
+        strncpy(ipc_buf, name, seL4_MsgMaxLength);
+    }
 
     seL4_Word unused0 = 0;
     seL4_Word unused1 = 0;
