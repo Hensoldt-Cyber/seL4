@@ -540,7 +540,7 @@ BOOT_CODE cap_t create_mapped_it_frame_cap(cap_t pd_cap, pptr_t pptr, vptr_t vpt
     return cap;
 }
 
-#ifndef CONFIG_ARM_HYPERVISOR_SUPPORT
+
 
 BOOT_CODE void activate_kernel_vspace(void)
 {
@@ -548,21 +548,8 @@ BOOT_CODE void activate_kernel_vspace(void)
        that everything we've written (particularly the kernel page tables)
        is committed. */
     cleanInvalidateL1Caches();
-    setCurrentPD(addrFromKPPtr(armKSGlobalPD));
-    invalidateLocalTLB();
-    lockTLBEntry(PPTR_BASE);
-    lockTLBEntry(PPTR_VECTOR_TABLE);
-}
 
-#else
-
-BOOT_CODE void activate_kernel_vspace(void)
-{
-    uint32_t r;
-    /* Ensure that there's nothing stale in newly-mapped regions, and
-       that everything we've written (particularly the kernel page tables)
-       is committed. */
-    cleanInvalidateL1Caches();
+#ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
     /* Setup the memory attributes: We use 2 indicies (cachable/non-cachable) */
     setHMAIR((ATTRINDX_NONCACHEABLE << 0) | (ATTRINDX_CACHEABLE << 8), 0);
     setCurrentHypPD(addrFromKPPtr(armHSGlobalPGD));
@@ -572,21 +559,21 @@ BOOT_CODE void activate_kernel_vspace(void)
     lockTLBEntry(PPTR_VECTOR_TABLE);
 #endif
     /* TODO find a better place to init the VMMU */
-    r = 0;
-    /* Translation range */
-    r |= (0x0 << 0);     /* 2^(32 -(0)) input range. */
-    r |= (r & 0x8) << 1; /* Sign bit */
-    /* starting level */
-    r |= (0x0 << 6);     /* Start at second level */
-    /* Sharability of tables */
-    r |= BIT(8);       /* Inner write-back, write-allocate */
-    r |= BIT(10);      /* Outer write-back, write-allocate */
-    /* Long descriptor format (not that we have a choice) */
-    r |= BIT(31);
-    setVTCR(r);
+    setVTCR(
+        (0x0 << 0)     /* 2^(32 -(0)) input range. */
+        /* Sign bit BIT(1) not set */
+        | (0x0 << 6) /* Start at second level */
+        | BIT(8) /* Inner write-back, write-allocate */
+        | BIT(10) /* Outer write-back, write-allocate */
+        | BIT(31) /* Long descriptor format (not that we have a choice) */
+    );
+#else /* not CONFIG_ARM_HYPERVISOR_SUPPORT */
+    setCurrentPD(addrFromKPPtr(armKSGlobalPD));
+    invalidateLocalTLB();
+    lockTLBEntry(PPTR_BASE);
+    lockTLBEntry(PPTR_VECTOR_TABLE);
+#endif /* [not] CONFIG_ARM_HYPERVISOR_SUPPORT */
 }
-
-#endif /* CONFIG_ARM_HYPERVISOR_SUPPORT */
 
 BOOT_CODE void write_it_asid_pool(cap_t it_ap_cap, cap_t it_pd_cap)
 {
