@@ -35,6 +35,7 @@
  * then set it to 1.
  */
 BOOT_BSS static int node_boot_lock;
+BOOT_BSS static word_t node_boot_mask;
 #endif /* ENABLE_SMP_SUPPORT */
 
 BOOT_BSS static region_t reserved[NUM_RESERVED_REGIONS];
@@ -254,12 +255,47 @@ BOOT_CODE static void init_plat(void)
 }
 
 #ifdef ENABLE_SMP_SUPPORT
-BOOT_CODE static bool_t try_init_kernel_secondary_core(void)
+
+BOOT_CODE static void update_smp_lock(word_t new_val)
+{
+    assert(node_boot_lock < new_val);
+    __atomic_store_n(&node_boot_lock, new_val, __ATOMIC_RELEASE);
+    if (1 == new_val)
+    {
+        /*
+        * At this point in time the primary core (executing this code) already
+        * uses the seL4 MMU/cache setup. However, the secondary cores are still
+        * using the elfloader's MMU/cache setup, and thus any memory updates may
+        * not be visible there.
+        *
+        * On AARCH64, both elfloader and seL4 map memory inner shareable and
+        * have the caches enabled, so no explicit cache maintenance is needed.
+        *
+        * On AARCH32 the elfloader uses strongly ordered uncached memory, but
+        * seL4 has caching enabled, thus explicit cache cleaning is required.
+        */
+#ifdef CONFIG_ARCH_AARCH32
+        cleanInvalidateL1Caches();
+        plat_cleanInvalidateL2Cache();
+#endif
+    }
+}
+
+BOOT_CODE static void wait_for_smp_lock_update(word_t new_val)
+{
+    for(;;) {
+        word_t v = __atomic_load_n(&node_boot_lock, __ATOMIC_ACQUIRE);
+        if (v == new_val) {
+            return;
+        }
+        assert(v < new_val);
+    }
+}
+
+BOOT_CODE static bool_t try_init_kernel_secondary_core(word_t core_id)
 {
     /* Busy wait for primary node to release secondary nodes. */
-    while (0 == __atomic_load_n(&node_boot_lock, __ATOMIC_ACQUIRE)) {
-        /* keep spinning */
-    }
+    wait_for_smp_lock_update(1);
 
     /* Perform cpu init */
     init_cpu();
@@ -276,23 +312,20 @@ BOOT_CODE static bool_t try_init_kernel_secondary_core(void)
     setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), INTERRUPT_VTIMER_EVENT));
 #endif /* CONFIG_ARM_HYPERVISOR_SUPPORT */
 
+    /* intialize kernel on secondary nodes */
     NODE_LOCK_SYS;
-
+    printf("core #%d init\n", core_id);
     clock_sync_test();
-    /* ksNumCPUs holds the number of active cores, which we simply incremnt. The
-     * primary core is polling this variable in a tight loop to determine when
-     * all nodes are up. Holding the BKL here just guarantees no kernel code is
-     * running concurrently on other cores. So simply incrementing the variable
-     * is save because the write implicitly enforces all other cores to see an
-     * update before they can do a write. However, the primary core in spinning
-     * in a tight loop reading ksNumCPUs without holding the BLK, thus there is
-     * actually no guarantee it sees the update unless the the memory order
-     * aware builtin functions are used. The function returns the old value of
-     * ksNumCPUs, which we don't care about.
-     */
-    (void)__atomic_fetch_add(&ksNumCPUs, 1, __ATOMIC_ACQ_REL);
-
     init_core_state(SchedulerAction_ResumeCurrentThread);
+    NODE_UNLOCK;
+    /* Set BIT(core_id - 1) in node_boot_mask to tell primary node that init on
+     * this node is done
+     */
+    (void)__atomic_fetch_or(&node_boot_mask, BIT(core_id - 1), __ATOMIC_ACQ_REL);
+
+     /* Busy wait (again) for primary node to ack SMP init and release secondary
+      * the nodes. */
+    wait_for_smp_lock_update(2);
 
     return true;
 }
@@ -302,34 +335,42 @@ BOOT_CODE static void release_secondary_cpus(void)
     /* Release all nodes at the same time. Update the lock in a way that ensures
      * the result is visible everywhere.
      */
-    assert(0 == node_boot_lock); /* Sanity check for a proper lock state. */
-    __atomic_store_n(&node_boot_lock, 1, __ATOMIC_RELEASE);
+    update_smp_lock(1);
 
-    /*
-     * At this point in time the primary core (executing this code) already uses
-     * the seL4 MMU/cache setup. However, the secondary cores are still using
-     * the elfloader's MMU/cache setup, and thus any memory updates may not
-     * be visible there.
-     *
-     * On AARCH64, both elfloader and seL4 map memory inner shareable and have
-     * the caches enabled, so no explicit cache maintenance is necessary.
-     *
-     * On AARCH32 the elfloader uses strongly ordered uncached memory, but seL4
-     * has caching enabled, thus explicit cache cleaning is required.
+    /* Wait until all the secondary cores are done initialising, ie. the bit for
+     * each core is set. Each core has a bit, so missing bits in the mask
+     * indicate which core failed to start.
      */
-#ifdef CONFIG_ARCH_AARCH32
-    cleanInvalidateL1Caches();
-    plat_cleanInvalidateL2Cache();
-#endif
+    word_t missing_nodes = BIT(CONFIG_MAX_NUM_NODES - 1) - 1;
+    word_t ready_order[CONFIG_MAX_NUM_NODES - 1][2] = {0};
+    int idx = 0;
+    do {
+        /* keep spinning until all cores are up */
+        word_t mask = __atomic_load_n(&node_boot_mask, __ATOMIC_ACQUIRE);
+        // mask = 0100
+        word_t new_cores_ready = missing_nodes & mask;
+        // new_cores_ready = 1110 & 0100 = 0100
+        while (new_cores_ready > 0) {
+            unsigned int core_bit = wordBits - 1 - clzl(new_cores_ready);
+            new_cores_ready &= ~BIT(core_bit);
+            ready_order[idx][0] = timestamp();
+            ready_order[idx][1] = core_bit;
+            idx++;
+        }
+        missing_nodes &= ~mask;
+    } while (missing_nodes > 0);
 
-    /* Wait until all the secondary cores are done initialising */
-    while (CONFIG_MAX_NUM_NODES != __atomic_load_n(&ksNumCPUs,
-                                                   __ATOMIC_ACQUIRE)) {
-#ifdef ENABLE_SMP_CLOCK_SYNC_TEST_ON_BOOT
-        NODE_STATE(ksCurTime) = getCurrentTime();
-#endif
+    for (int i = 0; i < ARRAY_SIZE(ready_order); i++) {
+        printf("[%"SEL4_PRIu_word"] core #%d up\n",
+               ready_order[i][0], (int)ready_order[i][1] + 1);
     }
 }
+
+BOOT_CODE static void release_secondary_cores_to_userland(void)
+{
+    update_smp_lock(2);
+}
+
 #endif /* ENABLE_SMP_SUPPORT */
 
 /* Main kernel initialisation function. */
@@ -623,16 +664,20 @@ static BOOT_CODE bool_t try_init_kernel(
     SMP_COND_STATEMENT(clh_lock_init());
     SMP_COND_STATEMENT(release_secondary_cpus());
 
-    /* All cores are up now, so there can be concurrency. The kernel booting is
+    /* All cores have finished booting now and wait to be released again to exit
+     * to userland. Grabing the BKL no is not really needed as there is no
+     * concurrency here. . needed for SMK init finalization  are up now, so there can be concurrency. The kernel booting is
      * supposed to be finished before the secondary cores are released, all the
      * primary has to do now is schedule the initial thread. Currently there is
      * nothing that touches any global data structures, nevertheless we grab the
      * BKL here to play safe. It is released when the kernel is left. */
     NODE_LOCK_SYS;
-
+    ksNumCPUs = CONFIG_MAX_NUM_NODES;
     printf("Booting all finished, dropped to user space\n");
+    NODE_UNLOCK;
 
-    /* kernel successfully initialized */
+    SMP_COND_STATEMENT(release_secondary_cores_to_userland());
+
     return true;
 }
 
@@ -649,14 +694,15 @@ BOOT_CODE VISIBLE void init_kernel(
 
 #ifdef ENABLE_SMP_SUPPORT
     /* we assume there exists a cpu with id 0 and will use it for bootstrapping */
-    if (getCurrentCPUIndex() == 0) {
+    word_t core_id = getCurrentCPUIndex();
+    if (core_id == 0) {
         result = try_init_kernel(ui_p_reg_start,
                                  ui_p_reg_end,
                                  pv_offset,
                                  v_entry,
                                  dtb_addr_p, dtb_size);
     } else {
-        result = try_init_kernel_secondary_core();
+        result = try_init_kernel_secondary_core(core_id);
     }
 
 #else
