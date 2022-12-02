@@ -225,12 +225,11 @@ BOOT_CODE static bool_t init_cpu(void)
     }
 
 #ifdef CONFIG_HAVE_FPU
-    if (haveHWFPU) {
-        if (!fpsimd_init()) {
-            return false;
-        }
-    } else {
+    if (!haveHWFPU) {
         printf("Platform claims to have FP hardware, but does not!\n");
+        return false;
+    }
+    if (!fpsimd_init()) {
         return false;
     }
 #endif /* CONFIG_HAVE_FPU */
