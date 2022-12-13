@@ -130,19 +130,19 @@ if(KernelPlatformQEMUArmVirt)
             endif()
 
             if(NOT DEFINED QEMU_MEMORY)
-                # Having 1 GiB of memory as default is a legacy from the past
-                # that is kept for compatibility. It should be increased to
-                # 2 GiB, which seems a good trade-off nowadays. It's sufficient
-                # for test/demo systems, but still something the host can
-                # provide without running short on resources.
-                # The memory starts at 1 GiB (0x40000000), so up to 3 GiB can be
-                # accessed before exceeding the 32-bit address space. For 32-bit
-                # systems, using memory beyond this point is non-trivial. While
-                # the LPAE MMU model supports accessing up to a 1 TiB (40-bit)
-                # physical address space even on 32-bit systems, the 32-bit
-                # version of seL4 can access physical addresses in the 32-bit
-                # range only.
-                set(QEMU_MEMORY "1024")
+                if(KernelSel4ArchAarch32)
+                    # The memory starts at 1 GiB (0x40000000), so 3 GiB can be
+                    # accessed using 32-bit addresses. While the LPAE MMU model
+                    # supports accessing a 1 TiB (40-bit) physical address
+                    # space, the 32-bit version of seL4 can access physical
+                    # addresses in the 32-bit range only.
+                    set(QEMU_MEMORY "8192")
+                else()
+                    # Having 3 GiB of memory as default seems a good trade-off.
+                    # It's sufficient for test/demo systems, but still something
+                    # the host can provide without running short on resources.
+                    set(QEMU_MEMORY "3072")
+                endif()
             endif()
 
             if(KernelMaxNumNodes)
