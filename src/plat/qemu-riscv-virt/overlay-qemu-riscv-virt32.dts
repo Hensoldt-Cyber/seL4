@@ -1,0 +1,32 @@
+/*
+ * Copyright 2022, HENSOLDT Cyber
+ *
+ *  * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/ {
+    reserved-memory {
+        #address-cells = <0x02>;
+        #size-cells = <0x02>;
+        ranges;
+
+        /* This is a hack to:
+         *  - cope with the current inability of the seL4 build scripts to
+         *    handle a full 4 GiB address space without overflows.
+         *  - handle configurations where a 32-bit QEMU has RAM beyond the
+         *    4 GiB border.
+         * Reserving all memory beyond 0xffffffff solves this. It avoids that
+         * the seL4 build scripts generate regions addresses >= 0x100000000,
+         * which break compilation, because such values don't fit into 32-bit
+         * variables used for physical addresses on 32-bit systems.
+         * The long term solution should be a fix in the builds scripts, so:
+         *   - a full 4 GiB address space is usable.
+         *   - everything beyond 4 GiB is ignored.
+         */
+        reserved-memory@ffffffff{
+            reg = < 0x00000000 0xffffffff 0xffffffff 0x00000001 >;
+            no-map;
+        };
+
+    };
+};
