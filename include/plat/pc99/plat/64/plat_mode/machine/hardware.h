@@ -67,10 +67,6 @@
  */
 #define USER_TOP UL_CONST(0x7FFFFFFFFFFF)
 
-/* The first physical address to map into the kernel's physical memory
- * window */
-#define PADDR_BASE UL_CONST(0x00000000)
-
 /* The base address in virtual memory to use for the 1:1 physical memory
  * mapping. Our kernel window is 2^39 bits (2^9 * 1gb) and the virtual
  * address range is 48 bits. Therefore our base is 2^48 - 2^39 */

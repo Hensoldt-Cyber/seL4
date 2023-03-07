@@ -45,6 +45,18 @@ static inline CONST word_t physBase(void)
     return PHYS_BASE_RAW;
 }
 
+/* The first physical address to map into the kernel's physical memory
+ * window.
+ */
+#define PADDR_BASE physBase()
+
+#if defined(__KERNEL_64__)
+ * For 64-bit architectures the current assumption is, that the whole address
+ * space can be mapped.
+ */
+compile_time_assert(0 == PHYS_BASE_RAW)
+#endif
+
 /* INTERRUPTS */
 {% for irq in kernel_irqs %}
 /* {{ irq.desc }} */
