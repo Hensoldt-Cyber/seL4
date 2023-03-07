@@ -52,10 +52,6 @@
 /* last accessible virtual address in user space */
 #define USER_TOP seL4_UserTop
 
-/* The first physical address to map into the kernel's physical memory
- * window */
-#define PADDR_BASE physBase()
-
 /* The base address in virtual memory to use for the 1:1 physical memory
  * mapping */
 #define PPTR_BASE seL4_UserTop

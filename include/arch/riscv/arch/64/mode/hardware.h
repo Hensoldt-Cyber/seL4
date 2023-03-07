@@ -77,10 +77,6 @@
 /* last accessible virtual address in user space */
 #define USER_TOP seL4_UserTop
 
-/* The first physical address to map into the kernel's physical memory
- * window */
-#define PADDR_BASE UL_CONST(0x0)
-
 /* The base address in virtual memory to use for the 1:1 physical memory
  * mapping */
 #define PPTR_BASE UL_CONST(0xFFFFFFC000000000)
