@@ -36,6 +36,13 @@ HEADER_TEMPLATE = '''/*
 #include <linker.h>         /* for BOOT_RODATA */
 #include <basic_types.h>    /* for p_region_t, kernel_frame_t (arch/types.h) */
 
+#if defined(__KERNEL_64__)
+ * For 64-bit architectures the current assumption is, that the whole address
+ * space can be mapped.
+ */
+compile_time_assert(0 == PHYS_BASE_RAW)
+#endif
+
 /* Wrap raw physBase location constant to give it a symbolic name in C that's
  * visible to verification. This is necessary as there are no real constants
  * in C except enums, and enums constants must fit in an int.
@@ -45,17 +52,6 @@ static inline CONST word_t physBase(void)
     return PHYS_BASE_RAW;
 }
 
-/* The first physical address to map into the kernel's physical memory
- * window.
- */
-#define PADDR_BASE physBase()
-
-#if defined(__KERNEL_64__)
- * For 64-bit architectures the current assumption is, that the whole address
- * space can be mapped.
- */
-compile_time_assert(0 == PHYS_BASE_RAW)
-#endif
 
 /* INTERRUPTS */
 {% for irq in kernel_irqs %}

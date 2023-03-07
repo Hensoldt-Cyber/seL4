@@ -65,7 +65,7 @@
 #endif
 
 /* The physical memory address to use for mapping the kernel ELF */
-#define KERNEL_ELF_PADDR_BASE PADDR_BASE
+#define KERNEL_ELF_PADDR_BASE physBase()
 /* For use by the linker (only integer constants allowed) */
 #define KERNEL_ELF_PADDR_BASE_RAW PHYS_BASE_RAW
 

@@ -214,7 +214,7 @@ BOOT_CODE bool_t map_kernel_window(
     /* Mapping of PPTR_BASE (virtual address) to kernel's PADDR_BASE
      * up to end of virtual address space except for the last large page.
      */
-    phys = PADDR_BASE;
+    phys = physBase();
     idx = PPTR_BASE >> LARGE_PAGE_BITS;
 
     /* PPTR_TOP differs whether CONFIG_KERNEL_LOG_BUFFER
