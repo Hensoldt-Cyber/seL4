@@ -13,10 +13,12 @@
 #include <benchmark/benchmark_utilisation.h>
 
 #ifdef CONFIG_ARCH_ARM
-static inline
-FORCE_INLINE
+#define FASTPATH_INLINE static inline FORCE_INLINE
+#else
+#define FASTPATH_INLINE
 #endif
-void NORETURN fastpath_call(word_t cptr, word_t msgInfo)
+
+FASTPATH_INLINE void NORETURN fastpath_call(word_t cptr, word_t msgInfo)
 {
     seL4_MessageInfo_t info;
     cap_t ep_cap;
@@ -236,14 +238,10 @@ void NORETURN fastpath_call(word_t cptr, word_t msgInfo)
     fastpath_restore(badge, msgInfo, dest);
 }
 
-#ifdef CONFIG_ARCH_ARM
-static inline
-FORCE_INLINE
-#endif
 #ifdef CONFIG_KERNEL_MCS
-void NORETURN fastpath_reply_recv(word_t cptr, word_t msgInfo, word_t reply)
+FASTPATH_INLINE void NORETURN fastpath_reply_recv(word_t cptr, word_t msgInfo, word_t reply)
 #else
-void NORETURN fastpath_reply_recv(word_t cptr, word_t msgInfo)
+FASTPATH_INLINE void NORETURN fastpath_reply_recv(word_t cptr, word_t msgInfo)
 #endif
 {
     seL4_MessageInfo_t info;
@@ -567,11 +565,7 @@ void NORETURN fastpath_reply_recv(word_t cptr, word_t msgInfo)
 }
 
 #ifdef CONFIG_SIGNAL_FASTPATH
-#ifdef CONFIG_ARCH_ARM
-static inline
-FORCE_INLINE
-#endif
-void NORETURN fastpath_signal(word_t cptr, word_t msgInfo)
+FASTPATH_INLINE void NORETURN fastpath_signal(word_t cptr, word_t msgInfo)
 {
     word_t fault_type;
     sched_context_t *sc = NULL;
@@ -733,9 +727,7 @@ void NORETURN fastpath_signal(word_t cptr, word_t msgInfo)
 #endif
 
 #ifdef CONFIG_EXCEPTION_FASTPATH
-static inline
-FORCE_INLINE
-void NORETURN fastpath_vm_fault(vm_fault_type_t type)
+FASTPATH_INLINE void NORETURN fastpath_vm_fault(vm_fault_type_t type)
 {
     cap_t handler_cap;
     endpoint_t *ep_ptr;
