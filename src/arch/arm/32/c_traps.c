@@ -22,16 +22,16 @@ void VISIBLE NORETURN restore_user_context(void)
 {
     NODE_UNLOCK_IF_HELD;
 
-    word_t cur_thread_reg = (word_t) NODE_STATE(ksCurThread);
-
     c_exit_hook();
 
+    tcb_t *cur_thread = NODE_STATE(ksCurThread);
+
 #ifdef ARM_CP14_SAVE_AND_RESTORE_NATIVE_THREADS
-    restore_user_debug_context(NODE_STATE(ksCurThread));
+    restore_user_debug_context(cur_thread);
 #endif
 
 #ifdef CONFIG_HAVE_FPU
-    lazyFPURestore(NODE_STATE(ksCurThread));
+    lazyFPURestore(cur_thread);
 #endif /* CONFIG_HAVE_FPU */
 
     if (config_set(CONFIG_ARM_HYPERVISOR_SUPPORT)) {
@@ -54,7 +54,7 @@ void VISIBLE NORETURN restore_user_context(void)
             /* Return to user */
             "eret"
             : /* no output */
-            : [cur_thread_reg] "r"(cur_thread_reg)
+            : [cur_thread_reg] "r"(cur_thread->tcbArch.tcbContext.registers)
             : "memory"
         );
     } else {
@@ -62,7 +62,7 @@ void VISIBLE NORETURN restore_user_context(void)
                   ldmdb sp, {r0-lr}^ \n\
                   rfeia sp"
                      : /* no output */
-                     : [cur_thread] "r"(cur_thread_reg + NextIP * sizeof(word_t))
+                     : [cur_thread] "r"((word_t)cur_thread + NextIP * sizeof(word_t))
                     );
     }
     UNREACHABLE();

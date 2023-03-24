@@ -31,10 +31,9 @@ static void NORETURN vmlaunch_failed(word_t failInvalid, word_t failValid)
     restore_user_context();
 }
 
-static void NORETURN restore_vmx(void)
+static void NORETURN restore_vmx(tcb_t *cur_thread)
 {
     restoreVMCS();
-    tcb_t *cur_thread = NODE_STATE(ksCurThread);
 #ifdef CONFIG_HARDWARE_DEBUG_API
     /* Do not support breakpoints in VMs, so just disable all breakpoints */
     loadAllDisabledBreakpointState(cur_thread);
@@ -153,7 +152,7 @@ void VISIBLE NORETURN restore_user_context(void)
     word_t *irqstack = x64KSIRQStack[CURRENT_CPU_INDEX()];
 #ifdef CONFIG_VTX
     if (thread_state_ptr_get_tsType(&cur_thread->tcbState) == ThreadState_RunningVM) {
-        restore_vmx();
+        restore_vmx(cur_thread);
     }
 #endif
     lazyFPURestore(cur_thread);
@@ -383,19 +382,21 @@ void VISIBLE NORETURN restore_user_context(void)
 void VISIBLE NORETURN c_x64_handle_interrupt(int irq, int syscall);
 void VISIBLE NORETURN c_x64_handle_interrupt(int irq, int syscall)
 {
+    tcb_t *cur_thread = NODE_STATE(ksCurThread);
+
     if (config_set(CONFIG_KERNEL_X86_IBRS_BASIC)) {
         x86_enable_ibrs();
     }
     word_t *irq_stack = x64KSIRQStack[CURRENT_CPU_INDEX()];
-    setRegister(NODE_STATE(ksCurThread), Error, irq_stack[0]);
+    setRegister(cur_thread, Error, irq_stack[0]);
     /* In the case of an interrupt the NextIP and the FaultIP should be the same value,
      * i.e. the address of the instruction the CPU was about to execute before the
      * interrupt. This is the 5th value pushed on by the hardware, so indexing from
      * the bottom is x64KSIRQStack[1] */
-    setRegister(NODE_STATE(ksCurThread), NextIP, irq_stack[1]);
-    setRegister(NODE_STATE(ksCurThread), FaultIP, irq_stack[1]);
-    setRegister(NODE_STATE(ksCurThread), FLAGS, irq_stack[3]);
-    setRegister(NODE_STATE(ksCurThread), RSP, irq_stack[4]);
+    setRegister(cur_thread, NextIP, irq_stack[1]);
+    setRegister(cur_thread, FaultIP, irq_stack[1]);
+    setRegister(cur_thread, FLAGS, irq_stack[3]);
+    setRegister(cur_thread, RSP, irq_stack[4]);
     c_handle_interrupt(irq, syscall);
     UNREACHABLE();
 }

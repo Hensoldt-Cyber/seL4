@@ -29,18 +29,18 @@ USED static void NORETURN vmlaunch_failed(void)
     restore_user_context();
 }
 
-static void NORETURN restore_vmx(void)
+static void NORETURN restore_vmx(tcb_t *cur_thread)
 {
     restoreVMCS();
 #ifdef CONFIG_HARDWARE_DEBUG_API
     /* Do not support breakpoints in VMs, so just disable all breakpoints */
-    loadAllDisabledBreakpointState(NODE_STATE(ksCurThread));
+    loadAllDisabledBreakpointState(cur_thread);
 #endif
 #ifdef ENABLE_SMP_SUPPORT
-    NODE_STATE(ksCurThread)->tcbArch.tcbVCPU->kernelSP = ((word_t)kernel_stack_alloc[getCurrentCPUIndex()]) + BIT(
+    cur_thread->tcbArch.tcbVCPU->kernelSP = ((word_t)kernel_stack_alloc[getCurrentCPUIndex()]) + BIT(
                                                              CONFIG_KERNEL_STACK_BITS) - 4;
 #endif /* ENABLE_SMP_SUPPORT */
-    if (NODE_STATE(ksCurThread)->tcbArch.tcbVCPU->launched) {
+    if (cur_thread->tcbArch.tcbVCPU->launched) {
         /* attempt to do a vmresume */
         asm volatile(
             // Set our stack pointer to the top of the tcb so we can efficiently pop
@@ -62,7 +62,7 @@ static void NORETURN restore_vmx(void)
 #endif
             "call vmlaunch_failed\n"
             :
-            : "r"(&NODE_STATE(ksCurThread)->tcbArch.tcbVCPU->gp_registers[VCPU_EAX]),
+            : "r"(&cur_thread->tcbArch.tcbVCPU->gp_registers[VCPU_EAX]),
             "i"(BIT(CONFIG_KERNEL_STACK_BITS) - sizeof(word_t))
             // Clobber memory so the compiler is forced to complete all stores
             // before running this assembler
@@ -90,7 +90,7 @@ static void NORETURN restore_vmx(void)
 #endif
             "call vmlaunch_failed\n"
             :
-            : "r"(&NODE_STATE(ksCurThread)->tcbArch.tcbVCPU->gp_registers[VCPU_EAX]),
+            : "r"(&cur_thread->tcbArch.tcbVCPU->gp_registers[VCPU_EAX]),
             "i"(BIT(CONFIG_KERNEL_STACK_BITS) - sizeof(word_t))
             // Clobber memory so the compiler is forced to complete all stores
             // before running this assembler
@@ -104,6 +104,8 @@ static void NORETURN restore_vmx(void)
 void NORETURN VISIBLE restore_user_context(void);
 void NORETURN VISIBLE restore_user_context(void)
 {
+    tcb_t *cur_thread = NODE_STATE(ksCurThread);
+
     c_exit_hook();
 
     NODE_UNLOCK_IF_HELD;
@@ -128,15 +130,15 @@ void NORETURN VISIBLE restore_user_context(void)
     }
 
 #ifdef CONFIG_VTX
-    if (thread_state_ptr_get_tsType(&NODE_STATE(ksCurThread)->tcbState) == ThreadState_RunningVM) {
-        restore_vmx();
+    if (thread_state_ptr_get_tsType(&cur_thread->tcbState) == ThreadState_RunningVM) {
+        restore_vmx(cur_thread);
     }
 #endif
-    setKernelEntryStackPointer(NODE_STATE(ksCurThread));
-    lazyFPURestore(NODE_STATE(ksCurThread));
+    setKernelEntryStackPointer(cur_thread);
+    lazyFPURestore(cur_thread);
 
 #ifdef CONFIG_HARDWARE_DEBUG_API
-    restore_user_debug_context(NODE_STATE(ksCurThread));
+    restore_user_debug_context(cur_thread);
 #endif
 
     if (config_set(CONFIG_KERNEL_X86_IBRS_BASIC)) {
@@ -144,8 +146,8 @@ void NORETURN VISIBLE restore_user_context(void)
     }
 
     /* see if we entered via syscall */
-    if (likely(NODE_STATE(ksCurThread)->tcbArch.tcbContext.registers[Error] == -1)) {
-        NODE_STATE(ksCurThread)->tcbArch.tcbContext.registers[FLAGS] &= ~FLAGS_IF;
+    if (likely(cur_thread->tcbArch.tcbContext.registers[Error] == -1)) {
+        cur_thread->tcbArch.tcbContext.registers[FLAGS] &= ~FLAGS_IF;
         asm volatile(
             // Set our stack pointer to the top of the tcb so we can efficiently pop
             "movl %0, %%esp\n"
@@ -173,7 +175,7 @@ void NORETURN VISIBLE restore_user_context(void)
             "sti\n"
             "sysexit\n"
             :
-            : "r"(&NODE_STATE(ksCurThread)->tcbArch.tcbContext.registers[EAX]),
+            : "r"(&cur_thread->tcbArch.tcbContext.registers[EAX]),
             [IFMASK]"i"(FLAGS_IF)
             // Clobber memory so the compiler is forced to complete all stores
             // before running this assembler
@@ -194,7 +196,7 @@ void NORETURN VISIBLE restore_user_context(void)
             "addl $8, %%esp\n"
             "iret\n"
             :
-            : "r"(&NODE_STATE(ksCurThread)->tcbArch.tcbContext.registers[EAX])
+            : "r"(&cur_thread->tcbArch.tcbContext.registers[EAX])
             // Clobber memory so the compiler is forced to complete all stores
             // before running this assembler
             : "memory"
