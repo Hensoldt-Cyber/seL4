@@ -36,16 +36,13 @@
 
 void handleInterruptEntry(void)
 {
-    irq_t irq;
-
 #ifdef CONFIG_KERNEL_MCS
     if (SMP_TERNARY(clh_is_self_in_queue(), 1)) {
         updateTimestamp();
         checkBudget();
     }
 #endif
-
-    irq = getActiveIRQ();
+    irq_t irq = getActiveIRQ();
     if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
         handleInterrupt(irq);
     } else {
@@ -555,10 +552,17 @@ static void handleYield(void)
 #endif
 }
 
+static void checkAndHandleInterrupt(void)
+{
+    irq_t irq = getActiveIRQ();
+    if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
+        handleInterrupt(irq);
+    }
+}
+
 void handleSyscall(syscall_t syscall)
 {
     exception_t ret;
-    irq_t irq;
     MCS_DO_IF_BUDGET({
         switch (syscall)
         {
@@ -566,10 +570,7 @@ void handleSyscall(syscall_t syscall)
             ret = handleInvocation(false, true, false, false, getRegister(NODE_STATE(ksCurThread), capRegister));
             if (unlikely(ret != EXCEPTION_NONE)) {
                 mcsPreemptionPoint();
-                irq = getActiveIRQ();
-                if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
-                    handleInterrupt(irq);
-                }
+                checkAndHandleInterrupt();
             }
 
             break;
@@ -578,10 +579,7 @@ void handleSyscall(syscall_t syscall)
             ret = handleInvocation(false, false, false, false, getRegister(NODE_STATE(ksCurThread), capRegister));
             if (unlikely(ret != EXCEPTION_NONE)) {
                 mcsPreemptionPoint();
-                irq = getActiveIRQ();
-                if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
-                    handleInterrupt(irq);
-                }
+                checkAndHandleInterrupt();
             }
             break;
 
@@ -589,10 +587,7 @@ void handleSyscall(syscall_t syscall)
             ret = handleInvocation(true, true, true, false, getRegister(NODE_STATE(ksCurThread), capRegister));
             if (unlikely(ret != EXCEPTION_NONE)) {
                 mcsPreemptionPoint();
-                irq = getActiveIRQ();
-                if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
-                    handleInterrupt(irq);
-                }
+                checkAndHandleInterrupt();
             }
             break;
 
@@ -631,10 +626,7 @@ void handleSyscall(syscall_t syscall)
             ret = handleInvocation(false, false, true, true, dest);
             if (unlikely(ret != EXCEPTION_NONE)) {
                 mcsPreemptionPoint();
-                irq = getActiveIRQ();
-                if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
-                    handleInterrupt(irq);
-                }
+                checkAndHandleInterrupt();
                 break;
             }
             handleRecv(true, true);
@@ -645,10 +637,7 @@ void handleSyscall(syscall_t syscall)
             ret = handleInvocation(false, false, true, true, getRegister(NODE_STATE(ksCurThread), replyRegister));
             if (unlikely(ret != EXCEPTION_NONE)) {
                 mcsPreemptionPoint();
-                irq = getActiveIRQ();
-                if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
-                    handleInterrupt(irq);
-                }
+                checkAndHandleInterrupt();
                 break;
             }
             handleRecv(true, false);
