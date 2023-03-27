@@ -366,7 +366,7 @@ void NORETURN fastpath_reply_recv(word_t cptr, word_t msgInfo)
 #endif
 
 #ifdef CONFIG_ARCH_X86_64
-    stored_hw_asid.words[0] = cap_pml4_cap_get_capPML4MappedASID(newVTable);
+    stored_hw_asid.words[0] = cap_pml4_cap_get_capPML4MappedASID_fp(newVTable);
 #endif
 #ifdef CONFIG_ARCH_IA32
     /* stored_hw_asid is unused on ia32 fastpath, but gets passed into a function below. */
