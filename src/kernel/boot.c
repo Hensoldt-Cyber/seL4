@@ -592,7 +592,7 @@ BOOT_CODE void init_core_state(tcb_t *scheduler_action)
 BOOT_CODE static bool_t provide_untyped_cap(
     cap_t      root_cnode_cap,
     bool_t     device_memory,
-    pptr_t     pptr,
+    paddr_t    paddr,
     word_t     size_bits,
     seL4_SlotPos first_untyped_slot
 )
@@ -602,13 +602,14 @@ BOOT_CODE static bool_t provide_untyped_cap(
     word_t i = ndks_boot.slot_pos_cur - first_untyped_slot;
     if (i < CONFIG_MAX_NUM_BOOTINFO_UNTYPED_CAPS) {
         ndks_boot.bi_frame->untypedList[i] = (seL4_UntypedDesc) {
-            .paddr    = pptr_to_paddr((void *)pptr),
+            .paddr    = paddr,
             .sizeBits = size_bits,
             .isDevice = device_memory,
             .padding  = {0}
         };
         ut_cap = cap_untyped_cap_new(MAX_FREE_INDEX(size_bits),
-                                     device_memory, size_bits, pptr);
+                                     device_memory, size_bits,
+                                     (pptr_t)paddr_to_pptr(paddr));
         ret = provide_cap(root_cnode_cap, ut_cap);
     } else {
         printf("Kernel init: Too many untyped regions for boot info\n");
@@ -617,15 +618,28 @@ BOOT_CODE static bool_t provide_untyped_cap(
     return ret;
 }
 
-BOOT_CODE static bool_t create_untypeds_for_region(
+BOOT_CODE static bool_t create_untypeds_for_phys_region(
     cap_t      root_cnode_cap,
     bool_t     device_memory,
-    region_t   reg,
+    p_region_t reg,
     seL4_SlotPos first_untyped_slot
 )
 {
-    while (!is_reg_empty(reg)) {
+    word_t reg_size = reg.end - reg.start;
+    if (0 == reg_size) {
+        return true; /* nothing to be done for empty regions */
+    }
 
+    /* The region end address can be inclusive or exclusive, this must be taken
+     * into account when calculating the region size. An end address is assumed
+     * to be inclusive if the LSB is 1.
+     */
+    if (reg.end & 1) {
+        reg_size++; /* Increment length by 1 for inclusive end addresses. */
+        assert(reg_size > 0); /* Overflows are not expected. */
+    }
+
+    do {
         /* Calculate the bit size of the region. */
         unsigned int size_bits = seL4_WordBits - 1 - clzl(reg.end - reg.start);
         /* The size can't exceed the largest possible untyped size. */
@@ -646,12 +660,20 @@ BOOT_CODE static bool_t create_untypeds_for_region(
          * be used anyway.
          */
         if (size_bits >= seL4_MinUntypedBits) {
-            if (!provide_untyped_cap(root_cnode_cap, device_memory, reg.start, size_bits, first_untyped_slot)) {
+            printf("untyped: %p / %d\n", (void *)reg.start, size_bits);
+            if (!provide_untyped_cap(root_cnode_cap, device_memory,
+                                     reg.start, size_bits, first_untyped_slot)) {
                 return false;
             }
         }
-        reg.start += BIT(size_bits);
-    }
+
+        word_t chunk_size = BIT(size_bits);
+        reg.start += chunk_size;
+        assert(reg_size >= chunk_size);
+        reg_size -= chunk_size;
+
+    } while (reg_size > 0);
+
     return true;
 }
 
@@ -663,10 +685,8 @@ BOOT_CODE bool_t create_untypeds(cap_t root_cnode_cap,
     paddr_t start = 0;
     for (word_t i = 0; i < ndks_boot.resv_count; i++) {
         if (start < ndks_boot.reserved[i].start) {
-            region_t reg = paddr_to_pptr_reg((p_region_t) {
-                start, ndks_boot.reserved[i].start
-            });
-            if (!create_untypeds_for_region(root_cnode_cap, true, reg, first_untyped_slot)) {
+            p_region_t reg = { .start = start, .end = ndks_boot.reserved[i].start };
+            if (!create_untypeds_for_phys_region(root_cnode_cap, true, reg, first_untyped_slot)) {
                 printf("ERROR: creation of untypeds for device region #%u at"
                        " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] failed\n",
                        (unsigned int)i, reg.start, reg.end);
@@ -678,11 +698,8 @@ BOOT_CODE bool_t create_untypeds(cap_t root_cnode_cap,
     }
 
     if (start < CONFIG_PADDR_USER_DEVICE_TOP) {
-        region_t reg = paddr_to_pptr_reg((p_region_t) {
-            start, CONFIG_PADDR_USER_DEVICE_TOP
-        });
-
-        if (!create_untypeds_for_region(root_cnode_cap, true, reg, first_untyped_slot)) {
+        p_region_t reg = { .start = start, .end = CONFIG_PADDR_USER_DEVICE_TOP };
+        if (!create_untypeds_for_phys_region(root_cnode_cap, true, reg, first_untyped_slot)) {
             printf("ERROR: creation of untypeds for top device region"
                    " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] failed\n",
                    reg.start, reg.end);
@@ -691,7 +708,9 @@ BOOT_CODE bool_t create_untypeds(cap_t root_cnode_cap,
     }
 
     /* if boot_mem_reuse_reg is not empty, we can create UT objs from boot code/data frames */
-    if (!create_untypeds_for_region(root_cnode_cap, false, boot_mem_reuse_reg, first_untyped_slot)) {
+    if (!create_untypeds_for_phys_region(root_cnode_cap, false,
+                                         pptr_to_paddr_reg(boot_mem_reuse_reg),
+                                         first_untyped_slot)) {
         printf("ERROR: creation of untypeds for recycled boot memory"
                " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] failed\n",
                boot_mem_reuse_reg.start, boot_mem_reuse_reg.end);
@@ -700,9 +719,10 @@ BOOT_CODE bool_t create_untypeds(cap_t root_cnode_cap,
 
     /* convert remaining freemem into UT objects and provide the caps */
     for (word_t i = 0; i < ARRAY_SIZE(ndks_boot.freemem); i++) {
-        region_t reg = ndks_boot.freemem[i];
+        p_region_t reg = pptr_to_paddr_reg(ndks_boot.freemem[i]);
         ndks_boot.freemem[i] = REG_EMPTY;
-        if (!create_untypeds_for_region(root_cnode_cap, false, reg, first_untyped_slot)) {
+        if (!create_untypeds_for_phys_region(root_cnode_cap, false, reg,
+                                             first_untyped_slot)) {
             printf("ERROR: creation of untypeds for free memory region #%u at"
                    " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] failed\n",
                    (unsigned int)i, reg.start, reg.end);
