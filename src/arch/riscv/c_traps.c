@@ -21,9 +21,11 @@
 /** DONT_TRANSLATE */
 void VISIBLE NORETURN restore_user_context(void)
 {
-    word_t cur_thread_reg = (word_t) NODE_STATE(ksCurThread)->tcbArch.tcbContext.registers;
     c_exit_hook();
     NODE_UNLOCK_IF_HELD;
+
+    tcb_t *cur_thread = NODE_STATE(ksCurThread);
+    word_t cur_thread_reg = (word_t) cur_thread->tcbArch.tcbContext.registers;
 
 #ifdef ENABLE_SMP_SUPPORT
     word_t sp;
@@ -34,8 +36,8 @@ void VISIBLE NORETURN restore_user_context(void)
 
 
 #ifdef CONFIG_HAVE_FPU
-    lazyFPURestore(NODE_STATE(ksCurThread));
-    set_tcb_fs_state(NODE_STATE(ksCurThread), isFpuEnable());
+    lazyFPURestore(cur_thread);
+    set_tcb_fs_state(cur_thread, isFpuEnable());
 #endif
 
     asm volatile(
