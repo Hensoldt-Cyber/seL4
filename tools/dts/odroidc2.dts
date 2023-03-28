@@ -53,7 +53,7 @@
 		#address-cells = <0x2>;
 		#size-cells = <0x0>;
 
-		cpu@0 {
+		cpu0: cpu@0 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a53\0arm,armv8";
 			reg = <0x0 0x0>;
@@ -63,7 +63,7 @@
 			phandle = < 0x04 >;
 		};
 
-		cpu@1 {
+		cpu1: cpu@1 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a53\0arm,armv8";
 			reg = <0x0 0x1>;
@@ -73,7 +73,7 @@
 			phandle = < 0x05 >;
 		};
 
-		cpu@2 {
+		cpu2: cpu@2 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a53\0arm,armv8";
 			reg = <0x0 0x2>;
@@ -83,7 +83,7 @@
 			phandle = < 0x06 >;
 		};
 
-		cpu@3 {
+		cpu3: cpu@3 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a53\0arm,armv8";
 			reg = < 0x00 0x03 >;
@@ -93,7 +93,7 @@
 			phandle = < 0x07 >;
 		};
 
-		l2-cache0 {
+		l2: l2-cache0 {
 			compatible = "cache";
 			phandle = < 0x02 >;
 		};
@@ -130,21 +130,21 @@
 		};
 	};
 
-	efuse {
+	efuse: efuse {
 		compatible = "amlogic,meson-gx-efuse\0amlogic,meson-gxbb-efuse";
 		#address-cells = <1>;
 		#size-cells = <1>;
 		read-only;
 
-		sn@14 {
+		sn: sn@14 {
 			reg = <0x14 0x10>;
 		};
 
-		eth_mac@34 {
+		eth_mac: eth-mac@34 {
 			reg = <0x34 0x10>;
 		};
 
-		bid@46 {
+		bid: bid@46 {
 			reg = <0x46 0x30>;
 		};
 	};
@@ -154,7 +154,7 @@
 		mboxes = < 0x08 0x01 0x08 0x02 >;
 		shmem = < 0x09 0x0a >;
 
-		clocks {
+		scpi_clocks: clocks {
 			compatible = "arm,scpi-clocks";
 			status = "disabled";
 
@@ -167,7 +167,7 @@
 			};
 		};
 
-		sensors {
+		scpi_sensors: sensors {
 			compatible = "amlogic,meson-gxbb-scpi-sensors\0arm,scpi-sensors";
 			#thermal-sensor-cells = <1>;
 		};
@@ -179,14 +179,14 @@
 		#size-cells = <2>;
 		ranges;
 
-		bus@c1100000 {
+		cbus: bus@c1100000 {
 			compatible = "simple-bus";
 			reg = <0x0 0xc1100000 0x0 0x100000>;
 			#address-cells = <2>;
 			#size-cells = <2>;
 			ranges = <0x0 0x0 0x0 0xc1100000 0x0 0x100000>;
 
-			interrupt-controller@9880 {
+			gpio_intc: interrupt-controller@9880 {
 				compatible = "amlogic,meson-gpio-intc\0amlogic,meson-gxbb-gpio-intc";
 				reg = <0x0 0x9880 0x0 0x10>;
 				interrupt-controller;
@@ -196,7 +196,7 @@
 				phandle = < 0x1b >;
 			};
 
-			reset-controller@4404 {
+			reset: reset-controller@4404 {
 				compatible = "amlogic,meson-gx-reset\0amlogic,meson-gxbb-reset";
 				reg = <0x0 0x04404 0x0 0x9c>;
 				#reset-cells = <1>;
@@ -212,7 +212,7 @@
 				clock-names = "xtal\0pclk\0baud";
 			};
 
-			serial@84dc {
+			uart_B: serial@84dc {
 				compatible = "amlogic,meson-gx-uart";
 				reg = <0x0 0x84dc 0x0 0x18>;
 				interrupts = < 0x00 0x4b 0x01 >;
@@ -221,7 +221,7 @@
 				clock-names = "xtal\0pclk\0baud";
 			};
 
-			i2c@8500 {
+			i2c_A: i2c@8500 {
 				compatible = "amlogic,meson-gx-i2c\0amlogic,meson-gxbb-i2c";
 				reg = <0x0 0x08500 0x0 0x20>;
 				interrupts = < 0x00 0x15 0x01 >;
@@ -233,21 +233,21 @@
 				pinctrl-names = "default";
 			};
 
-			pwm@8550 {
+			pwm_ab: pwm@8550 {
 				compatible = "amlogic,meson-gx-pwm\0amlogic,meson-gxbb-pwm";
 				reg = <0x0 0x08550 0x0 0x10>;
 				#pwm-cells = <3>;
 				status = "disabled";
 			};
 
-			pwm@8650 {
+			pwm_cd: pwm@8650 {
 				compatible = "amlogic,meson-gx-pwm\0amlogic,meson-gxbb-pwm";
 				reg = <0x0 0x08650 0x0 0x10>;
 				#pwm-cells = <3>;
 				status = "disabled";
 			};
 
-			adc@8680 {
+			saradc: adc@8680 {
 				compatible = "amlogic,meson-gxbb-saradc\0amlogic,meson-saradc";
 				reg = <0x0 0x8680 0x0 0x34>;
 				#io-channel-cells = <1>;
@@ -258,14 +258,14 @@
 				vref-supply = < 0x0e >;
 			};
 
-			pwm@86c0 {
+			pwm_ef: pwm@86c0 {
 				compatible = "amlogic,meson-gx-pwm\0amlogic,meson-gxbb-pwm";
 				reg = <0x0 0x086c0 0x0 0x10>;
 				#pwm-cells = <3>;
 				status = "disabled";
 			};
 
-			serial@8700 {
+			uart_C: serial@8700 {
 				compatible = "amlogic,meson-gx-uart";
 				reg = <0x0 0x8700 0x0 0x18>;
 				interrupts = < 0x00 0x5d 0x01 >;
@@ -284,7 +284,7 @@
 				clocks = < 0x0c 0x16 >;
 			};
 
-			i2c@87e0 {
+			i2c_C: i2c@87e0 {
 				compatible = "amlogic,meson-gx-i2c\0amlogic,meson-gxbb-i2c";
 				reg = < 0x00 0x87e0 0x00 0x20 >;
 				interrupts = < 0x00 0xd7 0x01 >;
@@ -294,7 +294,7 @@
 				clocks = < 0x0c 0x16 >;
 			};
 
-			spi@8d80 {
+			spicc: spi@8d80 {
 				compatible = "amlogic,meson-gx-spicc";
 				reg = < 0x00 0x8d80 0x00 0x80 >;
 				interrupts = < 0x00 0x51 0x04 >;
@@ -307,7 +307,7 @@
 				num-cs = < 0x01 >;
 			};
 
-			spi@8c80 {
+			spifc: spi@8c80 {
 				compatible = "amlogic,meson-gxbb-spifc";
 				reg = < 0x00 0x8c80 0x00 0x80 >;
 				#address-cells = < 0x01 >;
@@ -323,7 +323,7 @@
 			};
 		};
 
-		interrupt-controller@c4301000 {
+		gic: interrupt-controller@c4301000 {
 			compatible = "arm,gic-400";
 			reg = < 0x00 0xc4301000 0x00 0x1000 0x00 0xc4302000 0x00 0x2000 0x00 0xc4304000 0x00 0x2000 0x00 0xc4306000 0x00 0x2000 >;
 			interrupt-controller;
@@ -333,7 +333,7 @@
 			phandle = < 0x01 >;
 		};
 
-		sram@c8000000 {
+		sram: sram@c8000000 {
 			compatible = "amlogic,meson-gx-sram\0amlogic,meson-gxbb-sram\0mmio-sram";
 			reg = < 0x00 0xc8000000 0x00 0x14000 >;
 			#address-cells = < 0x01 >;
@@ -353,7 +353,7 @@
 			};
 		};
 
-		bus@c8100000 {
+		aobus: bus@c8100000 {
 			compatible = "simple-bus";
 			reg = < 0x00 0xc8100000 0x00 0x100000 >;
 			#address-cells = < 0x02 >;
@@ -377,7 +377,7 @@
 					phandle = < 0x25 >;
 				};
 
-				clock-controller {
+				clkc_AO: clock-controller {
 					compatible = "amlogic,meson-gxbb-aoclkc\0amlogic,meson-gx-aoclkc";
 					#clock-cells = < 0x01 >;
 					#reset-cells = < 0x01 >;
@@ -385,7 +385,7 @@
 				};
 			};
 
-			cec@100 {
+			cec_AO: cec@100 {
 				compatible = "amlogic,meson-gx-ao-cec";
 				reg = < 0x00 0x100 0x00 0x14 >;
 				interrupts = < 0x00 0xc7 0x01 >;
@@ -397,7 +397,7 @@
 				hdmi-phandle = < 0x13 >;
 			};
 
-			ao-secure@140 {
+			sec_AO: ao-secure@140 {
 				compatible = "amlogic,meson-gx-ao-secure\0syscon";
 				reg = < 0x00 0x140 0x00 0x140 >;
 				amlogic,has-chip-id;
@@ -638,14 +638,14 @@
 			};
 		};
 
-		periphs@c8834000 {
+		periphs: bus@c8834000 {
 			compatible = "simple-bus";
 			reg = < 0x00 0xc8834000 0x00 0x2000 >;
 			#address-cells = < 0x02 >;
 			#size-cells = < 0x02 >;
 			ranges = < 0x00 0x00 0x00 0xc8834000 0x00 0x2000 >;
 
-			rng {
+			hwrng: rng@0 {
 				compatible = "amlogic,meson-rng";
 				reg = < 0x00 0x00 0x00 0x04 >;
 				clocks = < 0x0c 0x19 >;
@@ -982,32 +982,32 @@
 			#size-cells = < 0x02 >;
 			ranges = < 0x00 0x00 0x00 0xc8838000 0x00 0x400 >;
 
-			video-lut@48 {
+			canvas: video-lut@48 {
 				compatible = "amlogic,canvas";
 				reg = < 0x00 0x48 0x00 0x14 >;
 			};
 		};
 
-		bus@c883c000 {
+		hiubus: bus@c883c000 {
 			compatible = "simple-bus";
 			reg = < 0x00 0xc883c000 0x00 0x2000 >;
 			#address-cells = < 0x02 >;
 			#size-cells = < 0x02 >;
 			ranges = < 0x00 0x00 0x00 0xc883c000 0x00 0x2000 >;
 
-			system-controller@0 {
+			sysctrl: system-controller@0 {
 				compatible = "amlogic,meson-gx-hhi-sysctrl\0simple-mfd\0syscon";
 				reg = < 0x00 0x00 0x00 0x400 >;
 				phandle = < 0x10 >;
 
-				clock-controller {
+				pwrc: power-controller {
 					compatible = "amlogic,gxbb-clkc";
 					#clock-cells = < 0x01 >;
 					phandle = < 0x0c >;
 				};
 			};
 
-			mailbox@404 {
+			mailbox: mailbox@404 {
 				compatible = "amlogic,meson-gx-mhu\0amlogic,meson-gxbb-mhu";
 				reg = < 0x00 0x404 0x00 0x4c >;
 				interrupts = < 0x00 0xd0 0x01 0x00 0xd1 0x01 0x00 0xd2 0x01 >;
@@ -1016,7 +1016,7 @@
 			};
 		};
 
-		ethernet@c9410000 {
+		ethmac: ethernet@c9410000 {
 			compatible = "amlogic,meson-gx-dwmac\0amlogic,meson-gxbb-dwmac\0snps,dwmac";
 			reg = < 0x00 0xc9410000 0x00 0x10000 0x00 0xc8834540 0x00 0x04 >;
 			interrupts = < 0x00 0x08 0x01 >;
@@ -1048,14 +1048,14 @@
 			};
 		};
 
-		apb@d0000000 {
+		apb: apb@d0000000 {
 			compatible = "simple-bus";
 			reg = < 0x00 0xd0000000 0x00 0x200000 >;
 			#address-cells = < 0x02 >;
 			#size-cells = < 0x02 >;
 			ranges = < 0x00 0x00 0x00 0xd0000000 0x00 0x200000 >;
 
-			mmc@70000 {
+			sd_emmc_a: mmc@70000 {
 				compatible = "amlogic,meson-gx-mmc\0amlogic,meson-gxbb-mmc";
 				reg = < 0x00 0x70000 0x00 0x800 >;
 				interrupts = < 0x00 0xd8 0x01 >;
