@@ -125,13 +125,13 @@
 
 	firmware {
 
-		secure-monitor {
+			compatible = "amlogic,meson-gx-sm", "amlogic,meson-gxbb-sm";
 			compatible = "amlogic,meson-gx-sm\0amlogic,meson-gxbb-sm";
 		};
 	};
 
 	efuse: efuse {
-		compatible = "amlogic,meson-gx-efuse\0amlogic,meson-gxbb-efuse";
+		compatible = "amlogic,meson-gx-efuse", "amlogic,meson-gxbb-efuse";
 		#address-cells = <1>;
 		#size-cells = <1>;
 		read-only;
@@ -150,7 +150,7 @@
 	};
 
 	scpi {
-		compatible = "amlogic,meson-gxbb-scpi\0arm,scpi-pre-1.0";
+		compatible = "amlogic,meson-gxbb-scpi", "arm,scpi-pre-1.0";
 		mboxes = < 0x08 0x01 0x08 0x02 >;
 		shmem = < 0x09 0x0a >;
 
@@ -168,7 +168,7 @@
 		};
 
 		scpi_sensors: sensors {
-			compatible = "amlogic,meson-gxbb-scpi-sensors\0arm,scpi-sensors";
+			compatible = "amlogic,meson-gxbb-scpi-sensors", "arm,scpi-sensors";
 			#thermal-sensor-cells = <1>;
 		};
 	};
@@ -234,14 +234,14 @@
 			};
 
 			pwm_ab: pwm@8550 {
-				compatible = "amlogic,meson-gx-pwm\0amlogic,meson-gxbb-pwm";
+				compatible = "amlogic,meson-gx-pwm", "amlogic,meson-gxbb-pwm";
 				reg = <0x0 0x08550 0x0 0x10>;
 				#pwm-cells = <3>;
 				status = "disabled";
 			};
 
 			pwm_cd: pwm@8650 {
-				compatible = "amlogic,meson-gx-pwm\0amlogic,meson-gxbb-pwm";
+				compatible = "amlogic,meson-gx-pwm", "amlogic,meson-gxbb-pwm";
 				reg = <0x0 0x08650 0x0 0x10>;
 				#pwm-cells = <3>;
 				status = "disabled";
@@ -259,7 +259,7 @@
 			};
 
 			pwm_ef: pwm@86c0 {
-				compatible = "amlogic,meson-gx-pwm\0amlogic,meson-gxbb-pwm";
+				compatible = "amlogic,meson-gx-pwm", "amlogic,meson-gxbb-pwm";
 				reg = <0x0 0x086c0 0x0 0x10>;
 				#pwm-cells = <3>;
 				status = "disabled";
@@ -398,13 +398,13 @@
 			};
 
 			sec_AO: ao-secure@140 {
-				compatible = "amlogic,meson-gx-ao-secure\0syscon";
+				compatible = "amlogic,meson-gx-ao-secure", "syscon";
 				reg = < 0x00 0x140 0x00 0x140 >;
 				amlogic,has-chip-id;
 			};
 
 			serial@4c0 {
-				compatible = "amlogic,meson-gx-uart\0amlogic,meson-ao-uart";
+				compatible = "amlogic,meson-gx-uart", "amlogic,meson-ao-uart";
 				reg = < 0x00 0x4c0 0x00 0x18 >;
 				interrupts = < 0x00 0xc1 0x01 >;
 				status = "okay";
@@ -415,7 +415,7 @@
 			};
 
 			serial@4e0 {
-				compatible = "amlogic,meson-gx-uart\0amlogic,meson-ao-uart";
+				compatible = "amlogic,meson-gx-uart", "amlogic,meson-ao-uart";
 				reg = < 0x00 0x4e0 0x00 0x18 >;
 				interrupts = < 0x00 0xc5 0x01 >;
 				status = "disabled";
@@ -434,14 +434,14 @@
 			};
 
 			pwm@550 {
-				compatible = "amlogic,meson-gx-ao-pwm\0amlogic,meson-gxbb-ao-pwm";
+				compatible = "amlogic,meson-gx-ao-pwm", "amlogic,meson-gxbb-ao-pwm";
 				reg = < 0x00 0x550 0x00 0x10 >;
 				#pwm-cells = < 0x03 >;
 				status = "disabled";
 			};
 
 			ir@580 {
-				compatible = "amlogic,meson-gx-ir\0amlogic,meson-gxbb-ir";
+				compatible = "amlogic,meson-gx-ir", "amlogic,meson-gxbb-ir";
 				reg = < 0x00 0x580 0x00 0x40 >;
 				interrupts = < 0x00 0xc4 0x01 >;
 				status = "okay";
