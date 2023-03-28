@@ -8,6 +8,7 @@
 
 #include <autoconf.h>
 #include <sel4/macros.h>
+#include <sel4/sel4_arch/constants.h>
 
 /* caps with fixed slot positions in the root CNode */
 enum {
@@ -23,8 +24,8 @@ enum {
     seL4_CapBootInfoFrame       =  9, /* bootinfo frame cap */
     seL4_CapInitThreadIPCBuffer = 10, /* initial thread's IPC buffer frame cap */
     seL4_CapDomain              = 11, /* global domain controller cap */
-    seL4_CapSMMUSIDControl      = 12,  /*global SMMU SID controller cap, null cap if not supported*/
-    seL4_CapSMMUCBControl       = 13,  /*global SMMU CB controller cap, null cap if not supported*/
+    seL4_CapSMMUSIDControl      = 12, /* global SMMU SID controller cap, null cap if not supported */
+    seL4_CapSMMUCBControl       = 13, /* global SMMU CB controller cap, null cap if not supported */
 #ifdef CONFIG_KERNEL_MCS
     seL4_CapInitThreadSC        = 14, /* initial thread's scheduling context cap */
     seL4_NumInitialCaps         = 15
@@ -46,9 +47,9 @@ typedef struct seL4_SlotRegion {
 } seL4_SlotRegion;
 
 typedef struct seL4_UntypedDesc {
-    seL4_Word  paddr;   /* physical address of untyped cap  */
-    seL4_Uint8 sizeBits;/* size (2^n) bytes of each untyped */
-    seL4_Uint8 isDevice;/* whether the untyped is a device  */
+    seL4_Word  paddr;    /* physical address of untyped cap  */
+    seL4_Uint8 sizeBits; /* size (2^n) bytes of each untyped */
+    seL4_Uint8 isDevice; /* whether the untyped is a device  */
     seL4_Uint8 padding[sizeof(seL4_Word) - 2 * sizeof(seL4_Uint8)];
 } seL4_UntypedDesc;
 
@@ -71,19 +72,50 @@ typedef struct seL4_BootInfo {
     seL4_Word         initThreadCNodeSizeBits; /* initial thread's root CNode size (2^n slots) */
     seL4_Domain       initThreadDomain; /* Initial thread's domain ID */
 #ifdef CONFIG_KERNEL_MCS
-    seL4_SlotRegion   schedcontrol; /* Caps to sched_control for each node */
+    seL4_SlotRegion   schedcontrol;    /* Caps to sched_control for each node */
 #endif
     seL4_SlotRegion   untyped;         /* untyped-object caps (untyped caps) */
-    seL4_UntypedDesc  untypedList[CONFIG_MAX_NUM_BOOTINFO_UNTYPED_CAPS]; /* information about each untyped */
-    /* the untypedList should be the last entry in this struct, in order
-     * to make this struct easier to represent in other languages */
+    seL4_UntypedDesc  untypedList[];   /* information about each untyped */
+    /* the untypedList[] must be the last entry */
 } seL4_BootInfo;
 
-/* If extraLen > 0, then 4K after the start of bootinfo there is a region of the
- * size extraLen that contains additional boot info data chunks. They are
- * arch/platform specific and may or may not exist in any given execution. Each
- * chunk has a header that contains an ID to describe the chunk. All IDs share a
- * global namespace to ensure uniqueness.
+/* The boot info frame size is usually exactly one page. As the page size is
+ * 4 KiByte on x86, ARM and RISC-V, some userland code seems to have a hard
+ * coded assumption that the boot info frame size is 4 KiByte. New code should
+ * avoid this and use SEL4_BI_FRAME_SIZE instead. This allows the boot info page
+ * to become larger in case CONFIG_MAX_NUM_BOOTINFO_UNTYPED_CAPS needs to be
+ * increased. Keep in mind that a larger boot info frame might break older
+ * userland code and libs then.
+ */
+#define SEL4_BI_FRAME_PAGES  1
+#define SEL4_BI_FRAME_SIZE   (SEL4_BI_FRAME_PAGES * LIBSEL4_BIT(seL4_PageBits))
+
+SEL4_COMPILE_ASSERT(
+    invalid_SEL4_BI_FRAME_SIZE,
+    sizeof(seL4_BootInfo) <= SEL4_BI_FRAME_SIZE)
+
+/* The number of elements in untypedList[] is limited by the by the remaining
+ * space in the boot info frame. Currently, all remaining space is used. The
+ * calculation below is safe, because the size of the open array untypedList[]
+ * counts as zero for sizeof(seL4_BootInfo), but this still takes into account
+ * padding after the field 'untyped' to ensure a proper alignment of the array.
+ */
+#define MAX_NUM_BOOTINFO_UNTYPED_CAPS \
+    ((SEL4_BI_FRAME_SIZE - sizeof(seL4_BootInfo)) / sizeof(seL4_UntypedDesc))
+
+/* The constant CONFIG_MAX_NUM_BOOTINFO_UNTYPED_CAPS was a CMake configuration
+ * parameter that allowed defining the size of the array untypedList[]. However,
+ * since the boot info frame always take full pages the array uses the remaining
+ * space. Thus, the configuration option has been dropped and the define is
+ * provided here for legacy compatibility.
+ */
+#define CONFIG_MAX_NUM_BOOTINFO_UNTYPED_CAPS  MAX_NUM_BOOTINFO_UNTYPED_CAPS
+
+/* If extraLen > 0, then at the offset SEL4_BI_FRAME_SIZE after the start of
+ * bootinfo there is a region of the size extraLen that contains additional boot
+ * info data chunks. They are arch/platform specific and may or may not exist in
+ * any given execution. Each chunk has a header that contains an ID to describe
+ * the chunk. All IDs share a global namespace to ensure uniqueness.
  */
 typedef enum {
     SEL4_BOOTINFO_HEADER_PADDING            = 0,

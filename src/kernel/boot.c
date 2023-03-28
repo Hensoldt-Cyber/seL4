@@ -144,22 +144,22 @@ BOOT_CODE static pptr_t alloc_rootserver_obj(word_t size_bits, word_t n)
     return allocated;
 }
 
-BOOT_CODE static word_t rootserver_max_size_bits(word_t extra_bi_size_bits)
+BOOT_CODE static word_t rootserver_max_size_bits(void)
 {
+    /* the largest object is the PD or the root cnode. */
     word_t cnode_size_bits = CONFIG_ROOT_CNODE_SIZE_BITS + seL4_SlotBits;
-    word_t max = MAX(cnode_size_bits, seL4_VSpaceBits);
-    return MAX(max, extra_bi_size_bits);
+    return MAX(cnode_size_bits, seL4_VSpaceBits);
 }
 
-BOOT_CODE static word_t calculate_rootserver_size(v_region_t it_v_reg, word_t extra_bi_size_bits)
+BOOT_CODE static word_t calculate_rootserver_size(v_region_t it_v_reg,
+                                                  word_t num_bi_pages)
 {
     /* work out how much memory we need for root server objects */
     word_t size = BIT(CONFIG_ROOT_CNODE_SIZE_BITS + seL4_SlotBits);
     size += BIT(seL4_TCBBits); // root thread tcb
     size += BIT(seL4_PageBits); // ipc buf
-    size += BIT(BI_FRAME_SIZE_BITS); // boot info
+    size += num_bi_pages * BIT(seL4_PageBits);
     size += BIT(seL4_ASIDPoolBits);
-    size += extra_bi_size_bits > 0 ? BIT(extra_bi_size_bits) : 0;
     size += BIT(seL4_VSpaceBits); // root vspace
 #ifdef CONFIG_KERNEL_MCS
     size += BIT(seL4_MinSchedContextBits); // root sched context
@@ -168,48 +168,33 @@ BOOT_CODE static word_t calculate_rootserver_size(v_region_t it_v_reg, word_t ex
     return size + arch_get_n_paging(it_v_reg) * BIT(seL4_PageTableBits);
 }
 
-BOOT_CODE static void maybe_alloc_extra_bi(word_t cmp_size_bits, word_t extra_bi_size_bits)
-{
-    if (extra_bi_size_bits >= cmp_size_bits && rootserver.extra_bi == 0) {
-        rootserver.extra_bi = alloc_rootserver_obj(extra_bi_size_bits, 1);
-    }
-}
-
 /* Create pptrs for all root server objects, starting at a give start address,
  * to cover the virtual memory region v_reg, and any extra boot info.
  */
 BOOT_CODE static void create_rootserver_objects(pptr_t start, v_region_t it_v_reg,
-                                                word_t extra_bi_size_bits)
+                                                word_t num_bi_pages)
 {
-    /* the largest object the PD, the root cnode, or the extra boot info */
+    word_t size = calculate_rootserver_size(it_v_reg, num_bi_pages);
     word_t cnode_size_bits = CONFIG_ROOT_CNODE_SIZE_BITS + seL4_SlotBits;
-    word_t max = rootserver_max_size_bits(extra_bi_size_bits);
 
-    word_t size = calculate_rootserver_size(it_v_reg, extra_bi_size_bits);
     rootserver_mem.start = start;
     rootserver_mem.end = start + size;
-
-    maybe_alloc_extra_bi(max, extra_bi_size_bits);
 
     /* the root cnode is at least 4k, so it could be larger or smaller than a pd. */
 #if (CONFIG_ROOT_CNODE_SIZE_BITS + seL4_SlotBits) > seL4_VSpaceBits
     rootserver.cnode = alloc_rootserver_obj(cnode_size_bits, 1);
-    maybe_alloc_extra_bi(seL4_VSpaceBits, extra_bi_size_bits);
     rootserver.vspace = alloc_rootserver_obj(seL4_VSpaceBits, 1);
 #else
     rootserver.vspace = alloc_rootserver_obj(seL4_VSpaceBits, 1);
-    maybe_alloc_extra_bi(cnode_size_bits, extra_bi_size_bits);
     rootserver.cnode = alloc_rootserver_obj(cnode_size_bits, 1);
 #endif
 
     /* at this point we are up to creating 4k objects - which is the min size of
      * extra_bi so this is the last chance to allocate it */
-    maybe_alloc_extra_bi(seL4_PageBits, extra_bi_size_bits);
     compile_assert(invalid_seL4_ASIDPoolBits, seL4_ASIDPoolBits == seL4_PageBits);
     rootserver.asid_pool = alloc_rootserver_obj(seL4_ASIDPoolBits, 1);
     rootserver.ipc_buf = alloc_rootserver_obj(seL4_PageBits, 1);
-    compile_assert(invalid_BI_FRAME_SIZE_BITS, BI_FRAME_SIZE_BITS == seL4_PageBits);
-    rootserver.boot_info = alloc_rootserver_obj(BI_FRAME_SIZE_BITS, 1);
+    rootserver.boot_info = alloc_rootserver_obj(seL4_PageBits, num_bi_pages);
 
     /* TCBs on aarch32 can be larger than page tables in certain configs */
 #if seL4_TCBBits >= seL4_PageTableBits
@@ -296,49 +281,74 @@ BOOT_CODE cap_t create_ipcbuf_frame_cap(cap_t root_cnode_cap, cap_t pd_cap, vptr
     return cap;
 }
 
-BOOT_CODE void create_bi_frame_cap(cap_t root_cnode_cap, cap_t pd_cap, vptr_t vptr)
+BOOT_CODE bool_t create_bi_frame_caps(cap_t root_cnode_cap, cap_t it_vspace_cap,
+                                      vptr_t bi_frame_vptr, word_t num_bi_pages)
 {
-    /* create a cap of it and write it into the root CNode */
-    cap_t cap = create_mapped_it_frame_cap(pd_cap, rootserver.boot_info, vptr, IT_ASID, false, false);
-    write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), seL4_CapBootInfoFrame), cap);
-}
+    assert(num_bi_pages >= 1);
+    assert(0 == (bi_frame_vptr % BIT(seL4_PageBits)));
 
-BOOT_CODE word_t calculate_extra_bi_size_bits(word_t extra_size)
-{
-    if (extra_size == 0) {
-        return 0;
+    pptr_t bi_frame_pptr = rootserver.boot_info;
+    assert(0 == (bi_frame_pptr % BIT(seL4_PageBits)));
+
+    seL4_SlotRegion *bi_slots = &(ndks_boot.bi_frame->extraBIPages);
+
+    for (word_t i = 0; i < num_bi_pages; i++) {
+        /* Create a cap for a page mapped to the initial thread. The mapping is
+         * non-executable with read/write access. Ideally, we function would
+         * also allow making it read-only.
+         */
+        word_t offset = i * BIT(seL4_PageBits);
+        cap_t bi_page_cap = create_mapped_it_frame_cap(
+                                it_vspace_cap,
+                                bi_frame_pptr + offset,
+                                bi_frame_vptr + offset,
+                                IT_ASID,  false, false);
+        /* The cap for the first page is stored at a well known place in the
+         * root C-Node. The slots of the other frame caps are given via the boot
+         * info data structure in the boot info page.
+         */
+        if (0 == i) {
+            write_slot(
+                SLOT_PTR(pptr_of_cap(root_cnode_cap), seL4_CapBootInfoFrame),
+                bi_page_cap);
+        } else {
+            if (1 == i) {
+                bi_slots->start = ndks_boot.slot_pos_cur;
+            }
+
+            if (!provide_cap(root_cnode_cap, bi_page_cap)) {
+                printf("ERROR: mapping extra boot info failed\n");
+                return false;
+            }
+
+            /* provide_cap() has updated ndks_boot.slot_pos_cur */
+            bi_slots->end = ndks_boot.slot_pos_cur;
+        }
     }
 
-    word_t clzl_ret = clzl(ROUND_UP(extra_size, seL4_PageBits));
-    word_t msb = seL4_WordBits - 1 - clzl_ret;
-    /* If region is bigger than a page, make sure we overallocate rather than
-     * underallocate
-     */
-    if (extra_size > BIT(msb)) {
-        msb++;
-    }
-    return msb;
+    return true;
 }
 
 BOOT_CODE void populate_bi_frame(node_id_t node_id, word_t num_nodes,
-                                 vptr_t ipcbuf_vptr, word_t extra_bi_size)
+                                 vptr_t ipcbuf_vptr, word_t num_bi_pages)
 {
-    /* clear boot info memory */
-    clearMemory((void *)rootserver.boot_info, BI_FRAME_SIZE_BITS);
-    if (extra_bi_size) {
-        clearMemory((void *)rootserver.extra_bi,
-                    calculate_extra_bi_size_bits(extra_bi_size));
+    assert(num_bi_pages >= 1);
+    /* properly clean memory before any user-level access. */
+    for (word_t i = 0; i < num_bi_pages; i++) {
+        clearMemory(
+            (void *)(rootserver.boot_info + i * BIT(seL4_PageBits)),
+            seL4_PageBits);
     }
 
     /* initialise bootinfo-related global state */
-    seL4_BootInfo *bi = BI_PTR(rootserver.boot_info);
+    seL4_BootInfo *bi = (seL4_BootInfo *)rootserver.boot_info;
     bi->nodeID = node_id;
     bi->numNodes = num_nodes;
     bi->numIOPTLevels = 0;
     bi->ipcBuffer = (seL4_IPCBuffer *)ipcbuf_vptr;
     bi->initThreadCNodeSizeBits = CONFIG_ROOT_CNODE_SIZE_BITS;
     bi->initThreadDomain = ksDomSchedule[ksDomScheduleIdx].domain;
-    bi->extraLen = extra_bi_size;
+    bi->extraLen = BIT(seL4_PageBits) * (num_bi_pages - 1);
 
     ndks_boot.bi_frame = bi;
     ndks_boot.slot_pos_cur = seL4_NumInitialCaps;
@@ -592,7 +602,7 @@ BOOT_CODE void init_core_state(tcb_t *scheduler_action)
 BOOT_CODE static bool_t provide_untyped_cap(
     cap_t      root_cnode_cap,
     bool_t     device_memory,
-    pptr_t     pptr,
+    paddr_t    paddr,
     word_t     size_bits,
     seL4_SlotPos first_untyped_slot
 )
@@ -600,32 +610,53 @@ BOOT_CODE static bool_t provide_untyped_cap(
     bool_t ret;
     cap_t ut_cap;
     word_t i = ndks_boot.slot_pos_cur - first_untyped_slot;
-    if (i < CONFIG_MAX_NUM_BOOTINFO_UNTYPED_CAPS) {
+    if (i < MAX_NUM_BOOTINFO_UNTYPED_CAPS) {
         ndks_boot.bi_frame->untypedList[i] = (seL4_UntypedDesc) {
-            .paddr    = pptr_to_paddr((void *)pptr),
+            .paddr    = paddr,
             .sizeBits = size_bits,
             .isDevice = device_memory,
             .padding  = {0}
         };
         ut_cap = cap_untyped_cap_new(MAX_FREE_INDEX(size_bits),
-                                     device_memory, size_bits, pptr);
+                                     device_memory, size_bits,
+                                     (pptr_t)paddr_to_pptr(paddr));
         ret = provide_cap(root_cnode_cap, ut_cap);
     } else {
+        /* If we ever end up here, then BI_FRAME_PAGES needs to be increased.
+         * This is doable, but it could break some helper libraries. By default,
+         * the boot info is one page and userland code out there that does not
+         * use BI_FRAME_SIZE might have the hard coded assumption that the boot
+         * info page is 4 KiByte. Since the extra boot info starts afterwards,
+         * such code will read garbage then.
+         */
         printf("Kernel init: Too many untyped regions for boot info\n");
         ret = true;
     }
     return ret;
 }
 
-BOOT_CODE static bool_t create_untypeds_for_region(
+BOOT_CODE static bool_t create_untypeds_for_phys_region(
     cap_t      root_cnode_cap,
     bool_t     device_memory,
-    region_t   reg,
+    p_region_t reg,
     seL4_SlotPos first_untyped_slot
 )
 {
-    while (!is_reg_empty(reg)) {
+    word_t reg_size = reg.end - reg.start;
+    if (0 == reg_size) {
+        return true; /* nothing to be done for empty regions */
+    }
 
+    /* The region end address can be inclusive or exclusive, this must be taken
+     * into account when calculating the region size. An end address is assumed
+     * to be inclusive if the LSB is 1.
+     */
+    if (reg.end & 1) {
+        reg_size++; /* Increment length by 1 for inclusive end addresses. */
+        assert(reg_size > 0); /* Overflows are not expected. */
+    }
+
+    do {
         /* Calculate the bit size of the region. */
         unsigned int size_bits = seL4_WordBits - 1 - clzl(reg.end - reg.start);
         /* The size can't exceed the largest possible untyped size. */
@@ -646,12 +677,20 @@ BOOT_CODE static bool_t create_untypeds_for_region(
          * be used anyway.
          */
         if (size_bits >= seL4_MinUntypedBits) {
-            if (!provide_untyped_cap(root_cnode_cap, device_memory, reg.start, size_bits, first_untyped_slot)) {
+            printf("untyped: %p / %d\n", (void *)reg.start, size_bits);
+            if (!provide_untyped_cap(root_cnode_cap, device_memory,
+                                     reg.start, size_bits, first_untyped_slot)) {
                 return false;
             }
         }
-        reg.start += BIT(size_bits);
-    }
+
+        word_t chunk_size = BIT(size_bits);
+        reg.start += chunk_size;
+        assert(reg_size >= chunk_size);
+        reg_size -= chunk_size;
+
+    } while (reg_size > 0);
+
     return true;
 }
 
@@ -663,10 +702,8 @@ BOOT_CODE bool_t create_untypeds(cap_t root_cnode_cap,
     paddr_t start = 0;
     for (word_t i = 0; i < ndks_boot.resv_count; i++) {
         if (start < ndks_boot.reserved[i].start) {
-            region_t reg = paddr_to_pptr_reg((p_region_t) {
-                start, ndks_boot.reserved[i].start
-            });
-            if (!create_untypeds_for_region(root_cnode_cap, true, reg, first_untyped_slot)) {
+            p_region_t reg = { .start = start, .end = ndks_boot.reserved[i].start };
+            if (!create_untypeds_for_phys_region(root_cnode_cap, true, reg, first_untyped_slot)) {
                 printf("ERROR: creation of untypeds for device region #%u at"
                        " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] failed\n",
                        (unsigned int)i, reg.start, reg.end);
@@ -678,11 +715,8 @@ BOOT_CODE bool_t create_untypeds(cap_t root_cnode_cap,
     }
 
     if (start < CONFIG_PADDR_USER_DEVICE_TOP) {
-        region_t reg = paddr_to_pptr_reg((p_region_t) {
-            start, CONFIG_PADDR_USER_DEVICE_TOP
-        });
-
-        if (!create_untypeds_for_region(root_cnode_cap, true, reg, first_untyped_slot)) {
+        p_region_t reg = { .start = start, .end = CONFIG_PADDR_USER_DEVICE_TOP };
+        if (!create_untypeds_for_phys_region(root_cnode_cap, true, reg, first_untyped_slot)) {
             printf("ERROR: creation of untypeds for top device region"
                    " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] failed\n",
                    reg.start, reg.end);
@@ -691,7 +725,9 @@ BOOT_CODE bool_t create_untypeds(cap_t root_cnode_cap,
     }
 
     /* if boot_mem_reuse_reg is not empty, we can create UT objs from boot code/data frames */
-    if (!create_untypeds_for_region(root_cnode_cap, false, boot_mem_reuse_reg, first_untyped_slot)) {
+    if (!create_untypeds_for_phys_region(root_cnode_cap, false,
+                                         pptr_to_paddr_reg(boot_mem_reuse_reg),
+                                         first_untyped_slot)) {
         printf("ERROR: creation of untypeds for recycled boot memory"
                " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] failed\n",
                boot_mem_reuse_reg.start, boot_mem_reuse_reg.end);
@@ -700,9 +736,10 @@ BOOT_CODE bool_t create_untypeds(cap_t root_cnode_cap,
 
     /* convert remaining freemem into UT objects and provide the caps */
     for (word_t i = 0; i < ARRAY_SIZE(ndks_boot.freemem); i++) {
-        region_t reg = ndks_boot.freemem[i];
+        p_region_t reg = pptr_to_paddr_reg(ndks_boot.freemem[i]);
         ndks_boot.freemem[i] = REG_EMPTY;
-        if (!create_untypeds_for_region(root_cnode_cap, false, reg, first_untyped_slot)) {
+        if (!create_untypeds_for_phys_region(root_cnode_cap, false, reg,
+                                             first_untyped_slot)) {
             printf("ERROR: creation of untypeds for free memory region #%u at"
                    " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] failed\n",
                    (unsigned int)i, reg.start, reg.end);
@@ -810,7 +847,7 @@ BOOT_BSS static region_t avail_reg[MAX_NUM_FREEMEM_REG];
  */
 BOOT_CODE bool_t init_freemem(word_t n_available, const p_region_t *available,
                               word_t n_reserved, const region_t *reserved,
-                              v_region_t it_v_reg, word_t extra_bi_size_bits)
+                              v_region_t it_v_reg, word_t num_bi_pages)
 {
 
     if (!check_available_memory(n_available, available)) {
@@ -901,8 +938,8 @@ BOOT_CODE bool_t init_freemem(word_t n_available, const p_region_t *available,
 
     /* try to grab the last available p region to create the root server objects
      * from. If possible, retain any left over memory as an extra p region */
-    word_t size = calculate_rootserver_size(it_v_reg, extra_bi_size_bits);
-    word_t max = rootserver_max_size_bits(extra_bi_size_bits);
+    word_t size = calculate_rootserver_size(it_v_reg, num_bi_pages);
+    word_t max = rootserver_max_size_bits();
     for (; i >= 0; i--) {
         /* Invariant: both i and (i + 1) are valid indices in ndks_boot.freemem. */
         assert(i < ARRAY_SIZE(ndks_boot.freemem) - 1);
@@ -925,7 +962,7 @@ BOOT_CODE bool_t init_freemem(word_t n_available, const p_region_t *available,
          * then we've found a region that fits the root server objects. */
         if (unaligned_start <= ndks_boot.freemem[i].end
             && start >= ndks_boot.freemem[i].start) {
-            create_rootserver_objects(start, it_v_reg, extra_bi_size_bits);
+            create_rootserver_objects(start, it_v_reg, num_bi_pages);
             /* There may be leftovers before and after the memory we used. */
             /* Shuffle the after leftover up to the empty slot (i + 1). */
             ndks_boot.freemem[empty_index] = (region_t) {

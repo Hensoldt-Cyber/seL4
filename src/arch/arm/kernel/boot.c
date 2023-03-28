@@ -47,7 +47,7 @@ BOOT_BSS static region_t reserved[NUM_RESERVED_REGIONS];
 BOOT_CODE static bool_t arch_init_freemem(p_region_t ui_p_reg,
                                           p_region_t dtb_p_reg,
                                           v_region_t it_v_reg,
-                                          word_t extra_bi_size_bits)
+                                          word_t num_bi_pages)
 {
     /* reserve the kernel image region */
     reserved[0].start = KERNEL_ELF_BASE;
@@ -117,10 +117,50 @@ BOOT_CODE static bool_t arch_init_freemem(p_region_t ui_p_reg,
 
     /* avail_p_regs comes from the auto-generated code */
     return init_freemem(ARRAY_SIZE(avail_p_regs), avail_p_regs,
-                        index, reserved,
-                        it_v_reg, extra_bi_size_bits);
+                        index, reserved, it_v_reg, num_bi_pages);
 }
 
+BOOT_CODE static void populate_boot_info(pptr_t bi_pptr,
+                                         word_t num_bi_pages,
+                                         vptr_t ipcbuf_vptr,
+                                         paddr_t dtb_phys_addr,
+                                         word_t dtb_size)
+{
+    /* Initialize the boot info frame, extraLen will be updated later when all
+     * extra data was written.
+     */
+    populate_bi_frame(0, CONFIG_MAX_NUM_NODES, ipcbuf_vptr, num_bi_pages);
+
+    region_t extra_bi_reg = {
+        .start = bi_pptr + SEL4_BI_FRAME_SIZE,
+        .end   = bi_pptr + num_bi_pages * BIT(PAGE_BITS)
+    };
+    assert(extra_bi_reg.start <= extra_bi_reg.end);
+    pptr_t extra_bi = extra_bi_reg.start;
+
+    /* Put DTB in the extra bootinfo block, if present. */
+    if (dtb_size > 0) {
+        seL4_BootInfoHeader header = {
+            .id = SEL4_BOOTINFO_HEADER_FDT,
+            .len = sizeof(header) + dtb_size
+        };
+        assert(header.len <= extra_bi_reg.end - extra_bi);
+        *(seL4_BootInfoHeader *)extra_bi = header;
+        extra_bi += sizeof(header);
+        memcpy((void *)extra_bi, paddr_to_pptr(dtb_phys_addr), dtb_size);
+        extra_bi += dtb_size;
+    }
+
+    /* Update boot info frame with the actual amount of extra data. There could
+     * be unused space left in the extra boot info region. On x86 a padding
+     * chunk is put there, but the reason is unclear, because the amount of
+     * extra data size is given in the boot info frame. On RISC-V and ARM there
+     * was also code to put a padding chunk there, but the calculation was
+     * broken and no padding chunk was ever really written.
+     */
+    seL4_BootInfo *bi = (seL4_BootInfo *)rootserver.boot_info;
+    bi->extraLen = extra_bi - extra_bi_reg.start;
+}
 
 BOOT_CODE static void init_irqs(cap_t root_cnode_cap)
 {
@@ -344,22 +384,7 @@ static BOOT_CODE bool_t try_init_kernel(
     };
     region_t ui_reg = paddr_to_pptr_reg(ui_p_reg);
     word_t extra_bi_size = 0;
-    pptr_t extra_bi_offset = 0;
-    vptr_t extra_bi_frame_vptr;
-    vptr_t bi_frame_vptr;
-    vptr_t ipcbuf_vptr;
     create_frames_of_region_ret_t create_frames_ret;
-    create_frames_of_region_ret_t extra_bi_ret;
-
-    /* convert from physical addresses to userland vptrs */
-    v_region_t ui_v_reg = {
-        .start = ui_p_reg_start - pv_offset,
-        .end   = ui_p_reg_end   - pv_offset
-    };
-
-    ipcbuf_vptr = ui_v_reg.end;
-    bi_frame_vptr = ipcbuf_vptr + BIT(PAGE_BITS);
-    extra_bi_frame_vptr = bi_frame_vptr + BIT(BI_FRAME_SIZE_BITS);
 
     /* setup virtual memory for the kernel */
     map_kernel_window();
@@ -407,11 +432,20 @@ static BOOT_CODE bool_t try_init_kernel(
         };
     }
 
-    /* The region of the initial thread is the user image + ipcbuf and boot info */
-    word_t extra_bi_size_bits = calculate_extra_bi_size_bits(extra_bi_size);
+    /* Convert from physical addresses to userland vptrs. The region of the
+     * initial thread is the user image + ipcbuf + boot info + extra.
+     */
+    v_region_t ui_v_reg = {
+        .start = ui_p_reg_start - pv_offset,
+        .end   = ui_p_reg_end   - pv_offset
+    };
+    vptr_t ipcbuf_vptr = ui_v_reg.end;
+    vptr_t bi_frame_vptr = ipcbuf_vptr + BIT(PAGE_BITS);
+    word_t num_bi_pages = SEL4_BI_FRAME_PAGES +
+                          (ROUND_UP(extra_bi_size, PAGE_BITS) / BIT(PAGE_BITS));
     v_region_t it_v_reg = {
         .start = ui_v_reg.start,
-        .end   = extra_bi_frame_vptr + BIT(extra_bi_size_bits)
+        .end   = bi_frame_vptr + num_bi_pages * BIT(PAGE_BITS)
     };
     if (it_v_reg.end >= USER_TOP) {
         /* Variable arguments for printf() require well defined integer types to
@@ -424,7 +458,7 @@ static BOOT_CODE bool_t try_init_kernel(
         return false;
     }
 
-    if (!arch_init_freemem(ui_p_reg, dtb_p_reg, it_v_reg, extra_bi_size_bits)) {
+    if (!arch_init_freemem(ui_p_reg, dtb_p_reg, it_v_reg, num_bi_pages)) {
         printf("ERROR: free memory management initialization failed\n");
         return false;
     }
@@ -446,27 +480,10 @@ static BOOT_CODE bool_t try_init_kernel(
     /* initialise the SMMU and provide the SMMU control caps*/
     init_smmu(root_cnode_cap);
 #endif
-    populate_bi_frame(0, CONFIG_MAX_NUM_NODES, ipcbuf_vptr, extra_bi_size);
 
-    /* put DTB in the bootinfo block, if present. */
-    seL4_BootInfoHeader header;
-    if (dtb_size > 0) {
-        header.id = SEL4_BOOTINFO_HEADER_FDT;
-        header.len = sizeof(header) + dtb_size;
-        *(seL4_BootInfoHeader *)(rootserver.extra_bi + extra_bi_offset) = header;
-        extra_bi_offset += sizeof(header);
-        memcpy((void *)(rootserver.extra_bi + extra_bi_offset),
-               paddr_to_pptr(dtb_phys_addr),
-               dtb_size);
-        extra_bi_offset += dtb_size;
-    }
-
-    if (extra_bi_size > extra_bi_offset) {
-        /* provide a chunk for any leftover padding in the extended boot info */
-        header.id = SEL4_BOOTINFO_HEADER_PADDING;
-        header.len = (extra_bi_size - extra_bi_offset);
-        *(seL4_BootInfoHeader *)(rootserver.extra_bi + extra_bi_offset) = header;
-    }
+    /* populate the bootinfo frame(s) */
+    populate_boot_info(rootserver.boot_info, num_bi_pages, ipcbuf_vptr,
+                       dtb_phys_addr, dtb_size);
 
     if (config_set(CONFIG_TK1_SMMU)) {
         ndks_boot.bi_frame->ioSpaceCaps = create_iospace_caps(root_cnode_cap);
@@ -487,32 +504,10 @@ static BOOT_CODE bool_t try_init_kernel(
         return false;
     }
 
-    /* Create and map bootinfo frame cap */
-    create_bi_frame_cap(
-        root_cnode_cap,
-        it_pd_cap,
-        bi_frame_vptr
-    );
-
-    /* create and map extra bootinfo region */
-    if (extra_bi_size > 0) {
-        region_t extra_bi_region = {
-            .start = rootserver.extra_bi,
-            .end = rootserver.extra_bi + extra_bi_size
-        };
-        extra_bi_ret =
-            create_frames_of_region(
-                root_cnode_cap,
-                it_pd_cap,
-                extra_bi_region,
-                true,
-                pptr_to_paddr((void *)extra_bi_region.start) - extra_bi_frame_vptr
-            );
-        if (!extra_bi_ret.success) {
-            printf("ERROR: mapping extra boot info to initial thread failed\n");
-            return false;
-        }
-        ndks_boot.bi_frame->extraBIPages = extra_bi_ret.region;
+    if (!create_bi_frame_caps(root_cnode_cap, it_pd_cap, bi_frame_vptr,
+                              num_bi_pages)) {
+        printf("ERROR: could not create boot info frames\n");
+        return false;
     }
 
 #ifdef CONFIG_KERNEL_MCS
