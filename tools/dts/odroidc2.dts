@@ -22,16 +22,19 @@
 		#size-cells = < 0x02 >;
 		ranges;
 
+		/* 16 MiB reserved for Hardware ROM Firmware */
 		hwrom@0 {
 			reg = < 0x00 0x00 0x00 0x1000000 >;
 			no-map;
 		};
 
-		secmon@10000000 {
+        /* 2 MiB reserved for ATF/BL31 */
+        secmon@10000000 {
 			reg = < 0x00 0x10000000 0x00 0x200000 >;
 			no-map;
 		};
 
+        /* 35 MiB reserved for ATF and TrustZone OS */
 		secmon@5000000 {
 			reg = < 0x00 0x5000000 0x00 0x2300000 >;
 			no-map;
