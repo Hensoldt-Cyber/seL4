@@ -55,7 +55,7 @@
 
 		cpu0: cpu@0 {
 			device_type = "cpu";
-			compatible = "arm,cortex-a53\0arm,armv8";
+			compatible = "arm,cortex-a53";
 			reg = <0x0 0x0>;
 			enable-method = "psci";
 			next-level-cache = < 0x02 >;
@@ -65,7 +65,7 @@
 
 		cpu1: cpu@1 {
 			device_type = "cpu";
-			compatible = "arm,cortex-a53\0arm,armv8";
+			compatible = "arm,cortex-a53";
 			reg = <0x0 0x1>;
 			enable-method = "psci";
 			next-level-cache = < 0x02 >;
@@ -75,7 +75,7 @@
 
 		cpu2: cpu@2 {
 			device_type = "cpu";
-			compatible = "arm,cortex-a53\0arm,armv8";
+			compatible = "arm,cortex-a53";
 			reg = <0x0 0x2>;
 			enable-method = "psci";
 			next-level-cache = < 0x02 >;
@@ -85,7 +85,7 @@
 
 		cpu3: cpu@3 {
 			device_type = "cpu";
-			compatible = "arm,cortex-a53\0arm,armv8";
+			compatible = "arm,cortex-a53";
 			reg = < 0x00 0x03 >;
 			enable-method = "psci";
 			next-level-cache = < 0x02 >;
@@ -187,7 +187,7 @@
 			ranges = <0x0 0x0 0x0 0xc1100000 0x0 0x100000>;
 
 			gpio_intc: interrupt-controller@9880 {
-				compatible = "amlogic,meson-gpio-intc\0amlogic,meson-gxbb-gpio-intc";
+				compatible = "amlogic,meson-gpio-intc";
 				reg = <0x0 0x9880 0x0 0x10>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
@@ -222,7 +222,7 @@
 			};
 
 			i2c_A: i2c@8500 {
-				compatible = "amlogic,meson-gx-i2c\0amlogic,meson-gxbb-i2c";
+				compatible = "amlogic,meson-gxbb-i2c";
 				reg = <0x0 0x08500 0x0 0x20>;
 				interrupts = < 0x00 0x15 0x01 >;
 				#address-cells = < 0x01 >;
@@ -248,7 +248,7 @@
 			};
 
 			saradc: adc@8680 {
-				compatible = "amlogic,meson-gxbb-saradc\0amlogic,meson-saradc";
+				compatible = "amlogic,meson-saradc";
 				reg = <0x0 0x8680 0x0 0x34>;
 				#io-channel-cells = <1>;
 				interrupts = < 0x00 0x49 0x01 >;
