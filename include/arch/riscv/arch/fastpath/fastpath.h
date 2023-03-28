@@ -97,16 +97,6 @@ static inline int fastpath_reply_cap_check(cap_t cap)
 static inline void NORETURN FORCE_INLINE fastpath_restore(word_t badge, word_t msgInfo, tcb_t *cur_thread)
 {
     NODE_UNLOCK_IF_HELD;
-
-    word_t cur_thread_regs = (word_t)cur_thread->tcbArch.tcbContext.registers;
-
-#ifdef ENABLE_SMP_SUPPORT
-    word_t sp;
-    asm volatile("csrr %0, sscratch" : "=r"(sp));
-    sp -= sizeof(word_t);
-    *((word_t *)sp) = cur_thread_regs;
-#endif
-
     c_exit_hook();
 
 #ifdef CONFIG_HAVE_FPU
@@ -114,19 +104,34 @@ static inline void NORETURN FORCE_INLINE fastpath_restore(word_t badge, word_t m
     set_tcb_fs_state(cur_thread, isFpuEnable());
 #endif
 
+    word_t *regs = cur_thread->tcbArch.tcbContext.registers;
+
+#ifdef ENABLE_SMP_SUPPORT
+    word_t *stack = (word_t *)read_sscratch();
+    stack[-1] = (word_t)regs;
+#else
+    write_sscratch((word_t)regs);
+#endif
+
+    write_sepc(regs[NextIP]);
+    write_sstatus(regs[SSTATUS]);
+
     register word_t badge_reg asm("a0") = badge;
     register word_t msgInfo_reg asm("a1") = msgInfo;
-    register word_t cur_thread_reg asm("t0") = cur_thread_regs;
+    register word_t cur_thread_reg asm("t0") = (word_t)regs;
 
+    /* restore core registers and return */
     asm volatile(
         LOAD_S "  ra, (0*%[REGSIZE])(t0)  \n"
         LOAD_S "  sp, (1*%[REGSIZE])(t0)  \n"
         LOAD_S "  gp, (2*%[REGSIZE])(t0)  \n"
-        /* skip tp */
-        /* skip x5/t0 */
+        LOAD_S "  tp, (3*%[REGSIZE])(t0)  \n"
+        /* skip t0 for now, as it holds the context */
+        LOAD_S "  t1, (5*%[REGSIZE])(t0) \n"
         LOAD_S "  t2, (6*%[REGSIZE])(t0)  \n"
         LOAD_S "  s0, (7*%[REGSIZE])(t0)  \n"
         LOAD_S "  s1, (8*%[REGSIZE])(t0)  \n"
+        /* skip a0/a1, they hold the return values already */
         LOAD_S "  a2, (11*%[REGSIZE])(t0) \n"
         LOAD_S "  a3, (12*%[REGSIZE])(t0) \n"
         LOAD_S "  a4, (13*%[REGSIZE])(t0) \n"
@@ -147,21 +152,7 @@ static inline void NORETURN FORCE_INLINE fastpath_restore(word_t badge, word_t m
         LOAD_S "  t4, (28*%[REGSIZE])(t0) \n"
         LOAD_S "  t5, (29*%[REGSIZE])(t0) \n"
         LOAD_S "  t6, (30*%[REGSIZE])(t0) \n"
-        /* Get next restored tp */
-        LOAD_S "  t1, (3*%[REGSIZE])(t0)  \n"
-        /* get restored tp */
-        "add tp, t1, x0  \n"
-        /* get sepc */
-        LOAD_S "  t1, (34*%[REGSIZE])(t0)\n"
-        "csrw sepc, t1  \n"
-#ifndef ENABLE_SMP_SUPPORT
-        /* Write back sscratch with cur_thread_reg to get it back on the next trap entry */
-        "csrw sscratch, t0\n"
-#endif
-        LOAD_S "  t1, (32*%[REGSIZE])(t0) \n"
-        "csrw sstatus, t1\n"
-
-        LOAD_S "  t1, (5*%[REGSIZE])(t0) \n"
+        /* finally restore t0 and return */
         LOAD_S "  t0, (4*%[REGSIZE])(t0) \n"
         "sret"
         : /* no output */
