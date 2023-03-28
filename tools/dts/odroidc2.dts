@@ -14,7 +14,7 @@
 	interrupt-parent = < 0x01 >;
 	#address-cells = < 0x02 >;
 	#size-cells = < 0x02 >;
-	compatible = "hardkernel,odroid-c2\0amlogic,meson-gxbb";
+	compatible = "hardkernel,odroid-c2", "amlogic,meson-gxbb";
 	model = "Hardkernel ODROID-C2";
 
 	reserved-memory {
@@ -55,7 +55,7 @@
 
 		cpu0: cpu@0 {
 			device_type = "cpu";
-			compatible = "arm,cortex-a53\0arm,armv8";
+			compatible = "arm,cortex-a53", "arm,armv8";
 			reg = <0x0 0x0>;
 			enable-method = "psci";
 			next-level-cache = < 0x02 >;
@@ -65,7 +65,7 @@
 
 		cpu1: cpu@1 {
 			device_type = "cpu";
-			compatible = "arm,cortex-a53\0arm,armv8";
+			compatible = "arm,cortex-a53", "arm,armv8";
 			reg = <0x0 0x1>;
 			enable-method = "psci";
 			next-level-cache = < 0x02 >;
@@ -75,7 +75,7 @@
 
 		cpu2: cpu@2 {
 			device_type = "cpu";
-			compatible = "arm,cortex-a53\0arm,armv8";
+			compatible = "arm,cortex-a53", "arm,armv8";
 			reg = <0x0 0x2>;
 			enable-method = "psci";
 			next-level-cache = < 0x02 >;
@@ -85,7 +85,7 @@
 
 		cpu3: cpu@3 {
 			device_type = "cpu";
-			compatible = "arm,cortex-a53\0arm,armv8";
+			compatible = "arm,cortex-a53", "arm,armv8";
 			reg = < 0x00 0x03 >;
 			enable-method = "psci";
 			next-level-cache = < 0x02 >;
@@ -126,12 +126,12 @@
 	firmware {
 
 		secure-monitor {
-			compatible = "amlogic,meson-gx-sm\0amlogic,meson-gxbb-sm";
+			compatible = "amlogic,meson-gx-sm", "amlogic,meson-gxbb-sm";
 		};
 	};
 
 	efuse: efuse {
-		compatible = "amlogic,meson-gx-efuse\0amlogic,meson-gxbb-efuse";
+		compatible = "amlogic,meson-gx-efuse", "amlogic,meson-gxbb-efuse";
 		#address-cells = <1>;
 		#size-cells = <1>;
 		read-only;
@@ -150,7 +150,7 @@
 	};
 
 	scpi {
-		compatible = "amlogic,meson-gxbb-scpi\0arm,scpi-pre-1.0";
+		compatible = "amlogic,meson-gxbb-scpi", "arm,scpi-pre-1.0";
 		mboxes = < 0x08 0x01 0x08 0x02 >;
 		shmem = < 0x09 0x0a >;
 
@@ -168,7 +168,7 @@
 		};
 
 		scpi_sensors: sensors {
-			compatible = "amlogic,meson-gxbb-scpi-sensors\0arm,scpi-sensors";
+			compatible = "amlogic,meson-gxbb-scpi-sensors", "arm,scpi-sensors";
 			#thermal-sensor-cells = <1>;
 		};
 	};
@@ -187,7 +187,7 @@
 			ranges = <0x0 0x0 0x0 0xc1100000 0x0 0x100000>;
 
 			gpio_intc: interrupt-controller@9880 {
-				compatible = "amlogic,meson-gpio-intc\0amlogic,meson-gxbb-gpio-intc";
+				compatible = "amlogic,meson-gpio-intc", "amlogic,meson-gxbb-gpio-intc";
 				reg = <0x0 0x9880 0x0 0x10>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
@@ -197,7 +197,7 @@
 			};
 
 			reset: reset-controller@4404 {
-				compatible = "amlogic,meson-gx-reset\0amlogic,meson-gxbb-reset";
+				compatible = "amlogic,meson-gx-reset", "amlogic,meson-gxbb-reset";
 				reg = <0x0 0x04404 0x0 0x9c>;
 				#reset-cells = <1>;
 				phandle = < 0x0f >;
@@ -209,7 +209,7 @@
 				interrupts = < 0x00 0x1a 0x01 >;
 				status = "disabled";
 				clocks = < 0x0b 0x0c 0x1a 0x0b >;
-				clock-names = "xtal\0pclk\0baud";
+				clock-names = "xtal", "pclk", "baud";
 			};
 
 			uart_B: serial@84dc {
@@ -218,11 +218,11 @@
 				interrupts = < 0x00 0x4b 0x01 >;
 				status = "disabled";
 				clocks = < 0x0b 0x0c 0x30 0x0b >;
-				clock-names = "xtal\0pclk\0baud";
+				clock-names = "xtal", "pclk", "baud";
 			};
 
 			i2c_A: i2c@8500 {
-				compatible = "amlogic,meson-gx-i2c\0amlogic,meson-gxbb-i2c";
+				compatible = "amlogic,meson-gx-i2c", "amlogic,meson-gxbb-i2c";
 				reg = <0x0 0x08500 0x0 0x20>;
 				interrupts = < 0x00 0x15 0x01 >;
 				#address-cells = < 0x01 >;
@@ -234,32 +234,32 @@
 			};
 
 			pwm_ab: pwm@8550 {
-				compatible = "amlogic,meson-gx-pwm\0amlogic,meson-gxbb-pwm";
+				compatible = "amlogic,meson-gx-pwm", "amlogic,meson-gxbb-pwm";
 				reg = <0x0 0x08550 0x0 0x10>;
 				#pwm-cells = <3>;
 				status = "disabled";
 			};
 
 			pwm_cd: pwm@8650 {
-				compatible = "amlogic,meson-gx-pwm\0amlogic,meson-gxbb-pwm";
+				compatible = "amlogic,meson-gx-pwm", "amlogic,meson-gxbb-pwm";
 				reg = <0x0 0x08650 0x0 0x10>;
 				#pwm-cells = <3>;
 				status = "disabled";
 			};
 
 			saradc: adc@8680 {
-				compatible = "amlogic,meson-gxbb-saradc\0amlogic,meson-saradc";
+				compatible = "amlogic,meson-gxbb-saradc", "amlogic,meson-saradc";
 				reg = <0x0 0x8680 0x0 0x34>;
 				#io-channel-cells = <1>;
 				interrupts = < 0x00 0x49 0x01 >;
 				status = "okay";
 				clocks = < 0x0b 0x0c 0x17 0x0c 0x61 0x0c 0x62 >;
-				clock-names = "clkin\0core\0adc_clk\0adc_sel";
+				clock-names = "clkin", "core", "adc_clk", "adc_sel";
 				vref-supply = < 0x0e >;
 			};
 
 			pwm_ef: pwm@86c0 {
-				compatible = "amlogic,meson-gx-pwm\0amlogic,meson-gxbb-pwm";
+				compatible = "amlogic,meson-gx-pwm", "amlogic,meson-gxbb-pwm";
 				reg = <0x0 0x086c0 0x0 0x10>;
 				#pwm-cells = <3>;
 				status = "disabled";
@@ -271,11 +271,11 @@
 				interrupts = < 0x00 0x5d 0x01 >;
 				status = "disabled";
 				clocks = < 0x0b 0x0c 0x44 0x0b >;
-				clock-names = "xtal\0pclk\0baud";
+				clock-names = "xtal", "pclk", "baud";
 			};
 
 			i2c@87c0 {
-				compatible = "amlogic,meson-gx-i2c\0amlogic,meson-gxbb-i2c";
+				compatible = "amlogic,meson-gx-i2c", "amlogic,meson-gxbb-i2c";
 				reg = < 0x00 0x87c0 0x00 0x20 >;
 				interrupts = < 0x00 0xd6 0x01 >;
 				#address-cells = < 0x01 >;
@@ -285,7 +285,7 @@
 			};
 
 			i2c_C: i2c@87e0 {
-				compatible = "amlogic,meson-gx-i2c\0amlogic,meson-gxbb-i2c";
+				compatible = "amlogic,meson-gx-i2c", "amlogic,meson-gxbb-i2c";
 				reg = < 0x00 0x87e0 0x00 0x20 >;
 				interrupts = < 0x00 0xd7 0x01 >;
 				#address-cells = < 0x01 >;
@@ -317,7 +317,7 @@
 			};
 
 			watchdog@98d0 {
-				compatible = "amlogic,meson-gx-wdt\0amlogic,meson-gxbb-wdt";
+				compatible = "amlogic,meson-gx-wdt", "amlogic,meson-gxbb-wdt";
 				reg = < 0x00 0x98d0 0x00 0x10 >;
 				clocks = < 0x0b >;
 			};
@@ -334,20 +334,20 @@
 		};
 
 		sram: sram@c8000000 {
-			compatible = "amlogic,meson-gx-sram\0amlogic,meson-gxbb-sram\0mmio-sram";
+			compatible = "amlogic,meson-gx-sram", "amlogic,meson-gxbb-sram", "mmio-sram";
 			reg = < 0x00 0xc8000000 0x00 0x14000 >;
 			#address-cells = < 0x01 >;
 			#size-cells = < 0x01 >;
 			ranges = < 0x00 0x00 0xc8000000 0x14000 >;
 
 			scp-shmem@0 {
-				compatible = "amlogic,meson-gx-scp-shmem\0amlogic,meson-gxbb-scp-shmem";
+				compatible = "amlogic,meson-gx-scp-shmem", "amlogic,meson-gxbb-scp-shmem";
 				reg = < 0x13000 0x400 >;
 				phandle = < 0x09 >;
 			};
 
 			scp-shmem@200 {
-				compatible = "amlogic,meson-gx-scp-shmem\0amlogic,meson-gxbb-scp-shmem";
+				compatible = "amlogic,meson-gx-scp-shmem", "amlogic,meson-gxbb-scp-shmem";
 				reg = < 0x13400 0x400 >;
 				phandle = < 0x0a >;
 			};
@@ -361,7 +361,7 @@
 			ranges = < 0x00 0x00 0x00 0xc8100000 0x00 0x100000 >;
 
 			sys-ctrl@0 {
-				compatible = "amlogic,meson-gx-ao-sysctrl\0simple-mfd\0syscon";
+				compatible = "amlogic,meson-gx-ao-sysctrl", "simple-mfd", "syscon";
 				reg = < 0x00 0x00 0x00 0x100 >;
 
 				power-controller-vpu {
@@ -370,7 +370,7 @@
 					amlogic,hhi-sysctrl = < 0x10 >;
 					resets = < 0x0f 0x05 0x0f 0x0a 0x0f 0x0d 0x0f 0x25 0x0f 0x84 0x0f 0x85 0x0f 0x86 0x0f 0x87 0x0f 0x89 0x0f 0x8c 0x0f 0x8d 0x0f 0xe7 >;
 					clocks = < 0x0c 0x84 0x0c 0x8c >;
-					clock-names = "vpu\0vapb";
+					clock-names = "vpu", "vapb";
 					assigned-clocks = < 0x0c 0x7e 0x0c 0x80 0x0c 0x84 0x0c 0x85 0x0c 0x87 0x0c 0x8b >;
 					assigned-clock-parents = < 0x0c 0x05 0x00 0x0c 0x80 0x0c 0x06 0x00 0x0c 0x87 >;
 					assigned-clock-rates = < 0x00 0x27bc86aa 0x00 0x00 0xee6b280 0x00 >;
@@ -378,7 +378,7 @@
 				};
 
 				clkc_AO: clock-controller {
-					compatible = "amlogic,meson-gxbb-aoclkc\0amlogic,meson-gx-aoclkc";
+					compatible = "amlogic,meson-gxbb-aoclkc", "amlogic,meson-gx-aoclkc";
 					#clock-cells = < 0x01 >;
 					#reset-cells = < 0x01 >;
 					phandle = < 0x11 >;
@@ -398,33 +398,33 @@
 			};
 
 			sec_AO: ao-secure@140 {
-				compatible = "amlogic,meson-gx-ao-secure\0syscon";
+				compatible = "amlogic,meson-gx-ao-secure", "syscon";
 				reg = < 0x00 0x140 0x00 0x140 >;
 				amlogic,has-chip-id;
 			};
 
 			serial@4c0 {
-				compatible = "amlogic,meson-gx-uart\0amlogic,meson-ao-uart";
+				compatible = "amlogic,meson-gx-uart", "amlogic,meson-ao-uart";
 				reg = < 0x00 0x4c0 0x00 0x18 >;
 				interrupts = < 0x00 0xc1 0x01 >;
 				status = "okay";
 				clocks = < 0x0b 0x11 0x03 0x0b >;
-				clock-names = "xtal\0pclk\0baud";
+				clock-names = "xtal", "pclk", "baud";
 				pinctrl-0 = < 0x14 >;
 				pinctrl-names = "default";
 			};
 
 			serial@4e0 {
-				compatible = "amlogic,meson-gx-uart\0amlogic,meson-ao-uart";
+				compatible = "amlogic,meson-gx-uart", "amlogic,meson-ao-uart";
 				reg = < 0x00 0x4e0 0x00 0x18 >;
 				interrupts = < 0x00 0xc5 0x01 >;
 				status = "disabled";
 				clocks = < 0x0b 0x11 0x04 0x0b >;
-				clock-names = "xtal\0pclk\0baud";
+				clock-names = "xtal", "pclk", "baud";
 			};
 
 			i2c@500 {
-				compatible = "amlogic,meson-gx-i2c\0amlogic,meson-gxbb-i2c";
+				compatible = "amlogic,meson-gx-i2c", "amlogic,meson-gxbb-i2c";
 				reg = < 0x00 0x500 0x00 0x20 >;
 				interrupts = < 0x00 0xc3 0x01 >;
 				#address-cells = < 0x01 >;
@@ -434,14 +434,14 @@
 			};
 
 			pwm@550 {
-				compatible = "amlogic,meson-gx-ao-pwm\0amlogic,meson-gxbb-ao-pwm";
+				compatible = "amlogic,meson-gx-ao-pwm", "amlogic,meson-gxbb-ao-pwm";
 				reg = < 0x00 0x550 0x00 0x10 >;
 				#pwm-cells = < 0x03 >;
 				status = "disabled";
 			};
 
 			ir@580 {
-				compatible = "amlogic,meson-gx-ir\0amlogic,meson-gxbb-ir";
+				compatible = "amlogic,meson-gx-ir", "amlogic,meson-gxbb-ir";
 				reg = < 0x00 0x580 0x00 0x40 >;
 				interrupts = < 0x00 0xc4 0x01 >;
 				status = "okay";
@@ -454,12 +454,12 @@
 				#address-cells = < 0x02 >;
 				#size-cells = < 0x02 >;
 				ranges;
-				gpio-line-names = "UART TX\0UART RX\0VCCK En\0TF 3V3/1V8 En\0USB HUB nRESET\0USB OTG Power En\0J7 Header Pin2\0IR In\0J7 Header Pin4\0J7 Header Pin6\0J7 Header Pin5\0J7 Header Pin7\0HDMI CEC\0SYS LED\0";
+				gpio-line-names = "UART TX", "UART RX", "VCCK En", "TF 3V3/1V8 En", "USB HUB nRESET", "USB OTG Power En", "J7 Header Pin2", "IR In", "J7 Header Pin4", "J7 Header Pin6", "J7 Header Pin5", "J7 Header Pin7", "HDMI CEC", "SYS LED", "";
 				phandle = < 0x16 >;
 
 				bank@14 {
 					reg = < 0x00 0x14 0x00 0x08 0x00 0x2c 0x00 0x04 0x00 0x24 0x00 0x08 >;
-					reg-names = "mux\0pull\0gpio";
+					reg-names = "mux", "pull", "gpio";
 					gpio-controller;
 					#gpio-cells = < 0x02 >;
 					gpio-ranges = < 0x16 0x00 0x00 0x0e >;
@@ -477,7 +477,7 @@
 					phandle = < 0x14 >;
 
 					mux {
-						groups = "uart_tx_ao_a\0uart_rx_ao_a";
+						groups = "uart_tx_ao_a", "uart_rx_ao_a";
 						function = "uart_ao";
 					};
 				};
@@ -485,7 +485,7 @@
 				uart_ao_a_cts_rts {
 
 					mux {
-						groups = "uart_cts_ao_a\0uart_rts_ao_a";
+						groups = "uart_cts_ao_a", "uart_rts_ao_a";
 						function = "uart_ao";
 					};
 				};
@@ -493,7 +493,7 @@
 				uart_ao_b {
 
 					mux {
-						groups = "uart_tx_ao_b\0uart_rx_ao_b";
+						groups = "uart_tx_ao_b", "uart_rx_ao_b";
 						function = "uart_ao_b";
 					};
 				};
@@ -501,7 +501,7 @@
 				uart_ao_b_cts_rts {
 
 					mux {
-						groups = "uart_cts_ao_b\0uart_rts_ao_b";
+						groups = "uart_cts_ao_b", "uart_rts_ao_b";
 						function = "uart_ao_b";
 					};
 				};
@@ -518,7 +518,7 @@
 				i2c_ao {
 
 					mux {
-						groups = "i2c_sck_ao\0i2c_sda_ao";
+						groups = "i2c_sck_ao", "i2c_sda_ao";
 						function = "i2c_ao";
 					};
 				};
@@ -657,12 +657,12 @@
 				#address-cells = < 0x02 >;
 				#size-cells = < 0x02 >;
 				ranges;
-				gpio-line-names = "Eth MDIO\0Eth MDC\0Eth RGMII RX Clk\0Eth RX DV\0Eth RX D0\0Eth RX D1\0Eth RX D2\0Eth RX D3\0Eth RGMII TX Clk\0Eth TX En\0Eth TX D0\0Eth TX D1\0Eth TX D2\0Eth TX D3\0Eth PHY nRESET\0Eth PHY Intc\0HDMI HPD\0HDMI DDC SDA\0HDMI DDC SCL\0\0eMMC D0\0eMMC D1\0eMMC D2\0eMMC D3\0eMMC D4\0eMMC D5\0eMMC D6\0eMMC D7\0eMMC Clk\0eMMC Reset\0eMMC CMD\0\0\0\0\0\0\0\0SDCard D1\0SDCard D0\0SDCard CLK\0SDCard CMD\0SDCard D3\0SDCard D2\0SDCard Det\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0I2C A SDA\0I2C A SCK\0I2C B SDA\0I2C B SCK\0PWM D\0PWM B\0Revision Bit0\0Revision Bit1\0\0J2 Header Pin35\0\0\0\0J2 Header Pin36\0J2 Header Pin31\0\0\0\0TF VDD En\0J2 Header Pin32\0J2 Header Pin26\0\0\0J2 Header Pin29\0J2 Header Pin24\0J2 Header Pin23\0J2 Header Pin22\0J2 Header Pin21\0J2 Header Pin18\0J2 Header Pin33\0J2 Header Pin19\0J2 Header Pin16\0J2 Header Pin15\0J2 Header Pin12\0J2 Header Pin13\0J2 Header Pin8\0J2 Header Pin10\0\0\0\0\0\0J2 Header Pin11\0\0J2 Header Pin7\0\0\0\0\0";
+				gpio-line-names = "Eth MDIO", "Eth MDC", "Eth RGMII RX Clk", "Eth RX DV", "Eth RX D0", "Eth RX D1", "Eth RX D2", "Eth RX D3", "Eth RGMII TX Clk", "Eth TX En", "Eth TX D0", "Eth TX D1", "Eth TX D2", "Eth TX D3", "Eth PHY nRESET", "Eth PHY Intc", "HDMI HPD", "HDMI DDC SDA", "HDMI DDC SCL", "", "eMMC D0", "eMMC D1", "eMMC D2", "eMMC D3", "eMMC D4", "eMMC D5", "eMMC D6", "eMMC D7", "eMMC Clk", "eMMC Reset", "eMMC CMD", "", "", "", "", "", "", "", "SDCard D1", "SDCard D0", "SDCard CLK", "SDCard CMD", "SDCard D3", "SDCard D2", "SDCard Det", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "I2C A SDA", "I2C A SCK", "I2C B SDA", "I2C B SCK", "PWM D", "PWM B", "Revision Bit0", "Revision Bit1", "", "J2 Header Pin35", "", "", "", "J2 Header Pin36", "J2 Header Pin31", "", "", "", "TF VDD En", "J2 Header Pin32", "J2 Header Pin26", "", "", "J2 Header Pin29", "J2 Header Pin24", "J2 Header Pin23", "J2 Header Pin22", "J2 Header Pin21", "J2 Header Pin18", "J2 Header Pin33", "J2 Header Pin19", "J2 Header Pin16", "J2 Header Pin15", "J2 Header Pin12", "J2 Header Pin13", "J2 Header Pin8", "J2 Header Pin10", "", "", "", "", "", "J2 Header Pin11", "", "J2 Header Pin7", "", "", "", "", "";
 				phandle = < 0x17 >;
 
 				bank@4b0 {
 					reg = < 0x00 0x4b0 0x00 0x28 0x00 0x4e8 0x00 0x14 0x00 0x520 0x00 0x14 0x00 0x430 0x00 0x40 >;
-					reg-names = "mux\0pull\0pull-enable\0gpio";
+					reg-names = "mux", "pull", "pull-enable", "gpio";
 					gpio-controller;
 					#gpio-cells = < 0x02 >;
 					gpio-ranges = < 0x17 0x00 0x00 0x77 >;
@@ -673,7 +673,7 @@
 					phandle = < 0x20 >;
 
 					mux {
-						groups = "emmc_nand_d07\0emmc_cmd\0emmc_clk";
+						groups = "emmc_nand_d07", "emmc_cmd", "emmc_clk";
 						function = "emmc";
 					};
 				};
@@ -704,7 +704,7 @@
 				nor {
 
 					mux {
-						groups = "nor_d\0nor_q\0nor_c\0nor_cs";
+						groups = "nor_d", "nor_q", "nor_c", "nor_cs";
 						function = "nor";
 					};
 				};
@@ -712,7 +712,7 @@
 				spi-pins {
 
 					mux {
-						groups = "spi_miso\0spi_mosi\0spi_sclk";
+						groups = "spi_miso", "spi_mosi", "spi_sclk";
 						function = "spi";
 					};
 				};
@@ -729,7 +729,7 @@
 					phandle = < 0x1c >;
 
 					mux {
-						groups = "sdcard_d0\0sdcard_d1\0sdcard_d2\0sdcard_d3\0sdcard_cmd\0sdcard_clk";
+						groups = "sdcard_d0", "sdcard_d1", "sdcard_d2", "sdcard_d3", "sdcard_cmd", "sdcard_clk";
 						function = "sdcard";
 					};
 				};
@@ -751,7 +751,7 @@
 				sdio {
 
 					mux {
-						groups = "sdio_d0\0sdio_d1\0sdio_d2\0sdio_d3\0sdio_cmd\0sdio_clk";
+						groups = "sdio_d0", "sdio_d1", "sdio_d2", "sdio_d3", "sdio_cmd", "sdio_clk";
 						function = "sdio";
 					};
 				};
@@ -780,7 +780,7 @@
 				uart_a {
 
 					mux {
-						groups = "uart_tx_a\0uart_rx_a";
+						groups = "uart_tx_a", "uart_rx_a";
 						function = "uart_a";
 					};
 				};
@@ -788,7 +788,7 @@
 				uart_a_cts_rts {
 
 					mux {
-						groups = "uart_cts_a\0uart_rts_a";
+						groups = "uart_cts_a", "uart_rts_a";
 						function = "uart_a";
 					};
 				};
@@ -796,7 +796,7 @@
 				uart_b {
 
 					mux {
-						groups = "uart_tx_b\0uart_rx_b";
+						groups = "uart_tx_b", "uart_rx_b";
 						function = "uart_b";
 					};
 				};
@@ -804,7 +804,7 @@
 				uart_b_cts_rts {
 
 					mux {
-						groups = "uart_cts_b\0uart_rts_b";
+						groups = "uart_cts_b", "uart_rts_b";
 						function = "uart_b";
 					};
 				};
@@ -812,7 +812,7 @@
 				uart_c {
 
 					mux {
-						groups = "uart_tx_c\0uart_rx_c";
+						groups = "uart_tx_c", "uart_rx_c";
 						function = "uart_c";
 					};
 				};
@@ -820,7 +820,7 @@
 				uart_c_cts_rts {
 
 					mux {
-						groups = "uart_cts_c\0uart_rts_c";
+						groups = "uart_cts_c", "uart_rts_c";
 						function = "uart_c";
 					};
 				};
@@ -829,7 +829,7 @@
 					phandle = < 0x0d >;
 
 					mux {
-						groups = "i2c_sck_a\0i2c_sda_a";
+						groups = "i2c_sck_a", "i2c_sda_a";
 						function = "i2c_a";
 					};
 				};
@@ -837,7 +837,7 @@
 				i2c_b {
 
 					mux {
-						groups = "i2c_sck_b\0i2c_sda_b";
+						groups = "i2c_sck_b", "i2c_sda_b";
 						function = "i2c_b";
 					};
 				};
@@ -845,7 +845,7 @@
 				i2c_c {
 
 					mux {
-						groups = "i2c_sck_c\0i2c_sda_c";
+						groups = "i2c_sck_c", "i2c_sda_c";
 						function = "i2c_c";
 					};
 				};
@@ -854,7 +854,7 @@
 					phandle = < 0x18 >;
 
 					mux {
-						groups = "eth_mdio\0eth_mdc\0eth_clk_rx_clk\0eth_rx_dv\0eth_rxd0\0eth_rxd1\0eth_rxd2\0eth_rxd3\0eth_rgmii_tx_clk\0eth_tx_en\0eth_txd0\0eth_txd1\0eth_txd2\0eth_txd3";
+						groups = "eth_mdio", "eth_mdc", "eth_clk_rx_clk", "eth_rx_dv", "eth_rxd0", "eth_rxd1", "eth_rxd2", "eth_rxd3", "eth_rgmii_tx_clk", "eth_tx_en", "eth_txd0", "eth_txd1", "eth_txd2", "eth_txd3";
 						function = "eth";
 					};
 				};
@@ -862,7 +862,7 @@
 				eth-rmii {
 
 					mux {
-						groups = "eth_mdio\0eth_mdc\0eth_clk_rx_clk\0eth_rx_dv\0eth_rxd0\0eth_rxd1\0eth_tx_en\0eth_txd0\0eth_txd1";
+						groups = "eth_mdio", "eth_mdc", "eth_clk_rx_clk", "eth_rx_dv", "eth_rxd0", "eth_rxd1", "eth_tx_en", "eth_txd0", "eth_txd1";
 						function = "eth";
 					};
 				};
@@ -936,7 +936,7 @@
 					phandle = < 0x28 >;
 
 					mux {
-						groups = "hdmi_sda\0hdmi_scl";
+						groups = "hdmi_sda", "hdmi_scl";
 						function = "hdmi_i2c";
 					};
 				};
@@ -996,7 +996,7 @@
 			ranges = < 0x00 0x00 0x00 0xc883c000 0x00 0x2000 >;
 
 			sysctrl: system-controller@0 {
-				compatible = "amlogic,meson-gx-hhi-sysctrl\0simple-mfd\0syscon";
+				compatible = "amlogic,meson-gx-hhi-sysctrl", "simple-mfd", "syscon";
 				reg = < 0x00 0x00 0x00 0x400 >;
 				phandle = < 0x10 >;
 
@@ -1008,7 +1008,7 @@
 			};
 
 			mailbox: mailbox@404 {
-				compatible = "amlogic,meson-gx-mhu\0amlogic,meson-gxbb-mhu";
+				compatible = "amlogic,meson-gx-mhu", "amlogic,meson-gxbb-mhu";
 				reg = < 0x00 0x404 0x00 0x4c >;
 				interrupts = < 0x00 0xd0 0x01 0x00 0xd1 0x01 0x00 0xd2 0x01 >;
 				#mbox-cells = < 0x01 >;
@@ -1017,13 +1017,13 @@
 		};
 
 		ethmac: ethernet@c9410000 {
-			compatible = "amlogic,meson-gx-dwmac\0amlogic,meson-gxbb-dwmac\0snps,dwmac";
+			compatible = "amlogic,meson-gx-dwmac", "amlogic,meson-gxbb-dwmac", "snps,dwmac";
 			reg = < 0x00 0xc9410000 0x00 0x10000 0x00 0xc8834540 0x00 0x04 >;
 			interrupts = < 0x00 0x08 0x01 >;
 			interrupt-names = "macirq";
 			status = "okay";
 			clocks = < 0x0c 0x24 0x0c 0x04 0x0c 0x0f >;
-			clock-names = "stmmaceth\0clkin0\0clkin1";
+			clock-names = "stmmaceth", "clkin0", "clkin1";
 			pinctrl-0 = < 0x18 >;
 			pinctrl-names = "default";
 			phy-handle = < 0x19 >;
@@ -1056,26 +1056,26 @@
 			ranges = < 0x00 0x00 0x00 0xd0000000 0x00 0x200000 >;
 
 			sd_emmc_a: mmc@70000 {
-				compatible = "amlogic,meson-gx-mmc\0amlogic,meson-gxbb-mmc";
+				compatible = "amlogic,meson-gx-mmc", "amlogic,meson-gxbb-mmc";
 				reg = < 0x00 0x70000 0x00 0x800 >;
 				interrupts = < 0x00 0xd8 0x01 >;
 				status = "disabled";
 				clocks = < 0x0c 0x5e 0x0c 0x77 0x0c 0x04 >;
-				clock-names = "core\0clkin0\0clkin1";
+				clock-names = "core", "clkin0", "clkin1";
 				resets = < 0x0f 0x2c >;
 			};
 
 			mmc@72000 {
-				compatible = "amlogic,meson-gx-mmc\0amlogic,meson-gxbb-mmc";
+				compatible = "amlogic,meson-gx-mmc", "amlogic,meson-gxbb-mmc";
 				reg = < 0x00 0x72000 0x00 0x800 >;
 				interrupts = < 0x00 0xd9 0x01 >;
 				status = "okay";
 				clocks = < 0x0c 0x5f 0x0c 0x7a 0x0c 0x04 >;
-				clock-names = "core\0clkin0\0clkin1";
+				clock-names = "core", "clkin0", "clkin1";
 				resets = < 0x0f 0x2d >;
 				pinctrl-0 = < 0x1c >;
 				pinctrl-1 = < 0x1d >;
-				pinctrl-names = "default\0clk-gate";
+				pinctrl-names = "default", "clk-gate";
 				bus-width = < 0x04 >;
 				cap-sd-highspeed;
 				max-frequency = < 0x5f5e100 >;
@@ -1087,16 +1087,16 @@
 			};
 
 			mmc@74000 {
-				compatible = "amlogic,meson-gx-mmc\0amlogic,meson-gxbb-mmc";
+				compatible = "amlogic,meson-gx-mmc", "amlogic,meson-gxbb-mmc";
 				reg = < 0x00 0x74000 0x00 0x800 >;
 				interrupts = < 0x00 0xda 0x01 >;
 				status = "okay";
 				clocks = < 0x0c 0x60 0x0c 0x7d 0x0c 0x04 >;
-				clock-names = "core\0clkin0\0clkin1";
+				clock-names = "core", "clkin0", "clkin1";
 				resets = < 0x0f 0x2e >;
 				pinctrl-0 = < 0x20 0x21 >;
 				pinctrl-1 = < 0x22 >;
-				pinctrl-names = "default\0clk-gate";
+				pinctrl-names = "default", "clk-gate";
 				bus-width = < 0x08 >;
 				max-frequency = < 0x5f5e100 >;
 				non-removable;
@@ -1110,12 +1110,12 @@
 			};
 
 			gpu@c0000 {
-				compatible = "amlogic,meson-gxbb-mali\0arm,mali-450";
+				compatible = "amlogic,meson-gxbb-mali", "arm,mali-450";
 				reg = < 0x00 0xc0000 0x00 0x40000 >;
 				interrupts = < 0x00 0xa0 0x04 0x00 0xa1 0x04 0x00 0xa2 0x04 0x00 0xa3 0x04 0x00 0xa4 0x04 0x00 0xa5 0x04 0x00 0xa6 0x04 0x00 0xa7 0x04 0x00 0xa8 0x04 0x00 0xa9 0x04 >;
-				interrupt-names = "gp\0gpmmu\0pp\0pmu\0pp0\0ppmmu0\0pp1\0ppmmu1\0pp2\0ppmmu2";
+				interrupt-names = "gp", "gpmmu", "pp", "pmu", "pp0", "ppmmu0", "pp1", "ppmmu1", "pp2", "ppmmu2";
 				clocks = < 0x0c 0x0c 0x0c 0x6a >;
-				clock-names = "bus\0core";
+				clock-names = "bus", "core";
 				assigned-clocks = < 0x0c 0x09 0x0c 0x64 0x0c 0x66 0x0c 0x6a >;
 				assigned-clock-parents = < 0x00 0x0c 0x09 0x00 0x0c 0x66 >;
 				assigned-clock-rates = < 0x2c588a00 0x00 0x2c588a00 0x00 >;
@@ -1123,9 +1123,9 @@
 		};
 
 		vpu@d0100000 {
-			compatible = "amlogic,meson-gxbb-vpu\0amlogic,meson-gx-vpu";
+			compatible = "amlogic,meson-gxbb-vpu", "amlogic,meson-gx-vpu";
 			reg = < 0x00 0xd0100000 0x00 0x100000 0x00 0xc883c000 0x00 0x1000 0x00 0xc8838000 0x00 0x1000 >;
-			reg-names = "vpu\0hhi\0dmc";
+			reg-names = "vpu", "hhi", "dmc";
 			interrupts = < 0x00 0x03 0x01 >;
 			#address-cells = < 0x01 >;
 			#size-cells = < 0x00 >;
@@ -1146,16 +1146,16 @@
 		};
 
 		hdmi-tx@c883a000 {
-			compatible = "amlogic,meson-gxbb-dw-hdmi\0amlogic,meson-gx-dw-hdmi";
+			compatible = "amlogic,meson-gxbb-dw-hdmi", "amlogic,meson-gx-dw-hdmi";
 			reg = < 0x00 0xc883a000 0x00 0x1c >;
 			interrupts = < 0x00 0x39 0x01 >;
 			#address-cells = < 0x01 >;
 			#size-cells = < 0x00 >;
 			status = "okay";
 			resets = < 0x0f 0x13 0x0f 0x4f 0x0f 0x42 >;
-			reset-names = "hdmitx_apb\0hdmitx\0hdmitx_phy";
+			reset-names = "hdmitx_apb", "hdmitx", "hdmitx_phy";
 			clocks = < 0x0c 0x3f 0x0c 0x0c 0x0c 0x4d >;
-			clock-names = "isfr\0iahb\0venci";
+			clock-names = "isfr", "iahb", "venci";
 			pinctrl-0 = < 0x27 0x28 >;
 			pinctrl-names = "default";
 			phandle = < 0x13 >;
@@ -1185,7 +1185,7 @@
 			reg = < 0x00 0xc0000000 0x00 0x20 >;
 			resets = < 0x0f 0x22 >;
 			clocks = < 0x0c 0x37 0x0c 0x32 >;
-			clock-names = "usb_general\0usb";
+			clock-names = "usb_general", "usb";
 			status = "okay";
 			phy-supply = < 0x2b >;
 			phandle = < 0x2c >;
@@ -1197,14 +1197,14 @@
 			reg = < 0x00 0xc0000020 0x00 0x20 >;
 			resets = < 0x0f 0x22 >;
 			clocks = < 0x0c 0x37 0x0c 0x33 >;
-			clock-names = "usb_general\0usb";
+			clock-names = "usb_general", "usb";
 			status = "okay";
 			phy-supply = < 0x2b >;
 			phandle = < 0x2d >;
 		};
 
 		usb@c9000000 {
-			compatible = "amlogic,meson-gxbb-usb\0snps,dwc2";
+			compatible = "amlogic,meson-gxbb-usb", "snps,dwc2";
 			reg = < 0x00 0xc9000000 0x00 0x40000 >;
 			interrupts = < 0x00 0x1e 0x04 >;
 			clocks = < 0x0c 0x41 >;
@@ -1216,7 +1216,7 @@
 		};
 
 		usb@c9100000 {
-			compatible = "amlogic,meson-gxbb-usb\0snps,dwc2";
+			compatible = "amlogic,meson-gxbb-usb", "snps,dwc2";
 			reg = < 0x00 0xc9100000 0x00 0x40000 >;
 			interrupts = < 0x00 0x1f 0x04 >;
 			clocks = < 0x0c 0x40 >;
