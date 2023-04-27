@@ -65,6 +65,14 @@ static inline void apic_write_icr(word_t high, word_t low)
     x86_wrmsr(APIC_ICR, icr);
 }
 
-#define IPI_ICR_BARRIER  asm volatile("mfence" ::: "memory")
-#define IPI_MEM_BARRIER  IPI_ICR_BARRIER
+static inline void ipi_icr_barrier(void)
+{
+    asm volatile("mfence" ::: "memory");
+}
+
+static inline void ipi_mem_barrier(void)
+{
+    IPI_ICR_BARRIER;
+}
+
 #endif /* CONFIG_X2APIC */

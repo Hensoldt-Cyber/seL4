@@ -66,7 +66,14 @@ static inline void apic_write_icr(word_t high, word_t low)
     apic_write_reg(APIC_ICR1, low);
 }
 
-#define IPI_ICR_BARRIER  asm volatile("" ::: "memory")
-#define IPI_MEM_BARRIER IPI_ICR_BARRIER
-#endif  /* CONFIG_XAPIC */
+static inline void ipi_icr_barrier(void)
+{
+    asm volatile("" ::: "memory");
+}
 
+static inline void ipi_mem_barrier(void)
+{
+    ipi_icr_barrier();
+}
+
+#endif  /* CONFIG_XAPIC */
