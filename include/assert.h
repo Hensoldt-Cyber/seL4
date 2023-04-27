@@ -12,13 +12,14 @@
 #ifdef CONFIG_DEBUG_BUILD
 
 void _fail(
-    const char  *str,
     const char  *file,
     unsigned int line,
-    const char  *function
+    const char  *function,
+    const char  *str,
+    ...
 ) NORETURN;
 
-#define fail(s) _fail(s, __FILE__, __LINE__, __func__)
+#define fail(...) _fail(__FILE__, __LINE__, __func__, __VA_ARGS__)
 
 void _assert_fail(
     const char  *assertion,
@@ -36,7 +37,7 @@ void _assert_fail(
 
 #else /* !DEBUG */
 
-#define fail(s) halt()
+#define fail(...) halt()
 
 #define assert(expr)
 
