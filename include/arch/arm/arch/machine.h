@@ -63,6 +63,17 @@ static inline void arch_pause(void)
 {
     /* TODO */
 }
+
+static inline void ipi_mem_barrier(void)
+{
+    /* For GICv2 systems a dmb() is sufficient, but it's not enough with GICv3
+     * due to the way IPIs is triggered (memory-mapped or MSR inst.). A dmb()
+     * does not prevent re-ordering to happen between memory accesses and
+     * instructions, this guarantee requires a dsb().
+     */
+    dsb_ishst();
+}
+
 #endif /* ENABLE_SMP_SUPPORT */
 
 /* Update the value of the actual regsiter to hold the expected value */

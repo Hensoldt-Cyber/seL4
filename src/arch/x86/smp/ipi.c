@@ -110,7 +110,7 @@ static void x86_ipi_send_mask(interrupt_t ipi, word_t mask, bool_t isBlocking)
     } while (mask != 0);
 
     /* broadcast IPIs to clusters... */
-    IPI_ICR_BARRIER;
+    ipi_icr_barrier();
     for (int i = 0; i < nr_target_clusters; i++) {
         apic_send_ipi_cluster(ipi, target_clusters[i]);
     }
