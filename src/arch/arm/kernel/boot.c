@@ -34,7 +34,7 @@
  * spinning until the primary core has initialized all kernel structures and
  * then set it to 1.
  */
-BOOT_BSS static volatile int node_boot_lock;
+BOOT_BSS static int node_boot_lock;
 #endif /* ENABLE_SMP_SUPPORT */
 
 BOOT_BSS static region_t reserved[NUM_RESERVED_REGIONS];
@@ -256,8 +256,10 @@ BOOT_CODE static void init_plat(void)
 #ifdef ENABLE_SMP_SUPPORT
 BOOT_CODE static bool_t try_init_kernel_secondary_core(void)
 {
-    /* need to first wait until some kernel init has been done */
-    while (!node_boot_lock);
+    /* Busy wait for primary node to release secondary nodes. */
+    while (0 == __atomic_load_n(&node_boot_lock, __ATOMIC_ACQUIRE)) {
+        /* keep spinning */
+    }
 
     /* Perform cpu init */
     init_cpu();
@@ -273,10 +275,22 @@ BOOT_CODE static bool_t try_init_kernel_secondary_core(void)
     setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), INTERRUPT_VGIC_MAINTENANCE));
     setIRQState(IRQReserved, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), INTERRUPT_VTIMER_EVENT));
 #endif /* CONFIG_ARM_HYPERVISOR_SUPPORT */
+
     NODE_LOCK_SYS;
 
     clock_sync_test();
-    ksNumCPUs++;
+    /* ksNumCPUs holds the number of active cores, which we simply incremnt. The
+     * primary core is polling this variable in a tight loop to determine when
+     * all nodes are up. Holding the BKL here just guarantees no kernel code is
+     * running concurrently on other cores. So simply incrementing the variable
+     * is save because the write implicitly enforces all other cores to see an
+     * update before they can do a write. However, the primary core in spinning
+     * in a tight loop reading ksNumCPUs without holding the BLK, thus there is
+     * actually no guarantee it sees the update unless the the memory order
+     * aware builtin functions are used. The function returns the old value of
+     * ksNumCPUs, which we don't care about.
+     */
+    (void)__atomic_fetch_add(&ksNumCPUs, 1, __ATOMIC_ACQ_REL);
 
     init_core_state(SchedulerAction_ResumeCurrentThread);
 
@@ -285,9 +299,11 @@ BOOT_CODE static bool_t try_init_kernel_secondary_core(void)
 
 BOOT_CODE static void release_secondary_cpus(void)
 {
-    /* release the cpus at the same time */
+    /* Release all nodes at the same time. Update the lock in a way that ensures
+     * the result is visible everywhere.
+     */
     assert(0 == node_boot_lock); /* Sanity check for a proper lock state. */
-    node_boot_lock = 1;
+    __atomic_store_n(&node_boot_lock, 1, __ATOMIC_RELEASE);
 
     /*
      * At this point in time the primary core (executing this code) already uses
@@ -307,12 +323,11 @@ BOOT_CODE static void release_secondary_cpus(void)
 #endif
 
     /* Wait until all the secondary cores are done initialising */
-    while (ksNumCPUs != CONFIG_MAX_NUM_NODES) {
+    while (CONFIG_MAX_NUM_NODES != __atomic_load_n(&ksNumCPUs,
+                                                   __ATOMIC_ACQUIRE)) {
 #ifdef ENABLE_SMP_CLOCK_SYNC_TEST_ON_BOOT
         NODE_STATE(ksCurTime) = getCurrentTime();
 #endif
-        /* perform a memory acquire to get new values of ksNumCPUs, release for ksCurTime */
-        __atomic_thread_fence(__ATOMIC_ACQ_REL);
     }
 }
 #endif /* ENABLE_SMP_SUPPORT */
@@ -589,6 +604,9 @@ static BOOT_CODE bool_t try_init_kernel(
     /* finalise the bootinfo frame */
     bi_finalise();
 
+    /* primary node is avaialble */
+    __atomic_store_n(&ksNumCPUs, 1, __ATOMIC_RELEASE);
+
     /* Flushing the L1 cache and invalidating the TLB is good enough here to
      * make sure everything written by the kernel is visible to userland. There
      * are no uncached userland frames at this stage that require enforcing
@@ -600,8 +618,6 @@ static BOOT_CODE bool_t try_init_kernel(
     if (config_set(CONFIG_ARM_HYPERVISOR_SUPPORT)) {
         invalidateHypTLB();
     }
-
-    ksNumCPUs = 1;
 
     /* initialize BKL before booting up other cores */
     SMP_COND_STATEMENT(clh_lock_init());
