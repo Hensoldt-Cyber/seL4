@@ -1,5 +1,6 @@
 #
 # Copyright 2020, Data61, CSIRO (ABN 41 687 119 230)
+# Copyright 2021, HENSOLDT Cyber
 #
 # SPDX-License-Identifier: GPL-2.0-only
 #
@@ -25,6 +26,16 @@ config_option(
     KernelRiscvExtD RISCV_EXT_D "RISC-V extension for double-precision floating-point"
     DEFAULT OFF
     DEPENDS "KernelArchRiscV"
+)
+
+config_choice(
+    KernelRiscVSBI
+    RISCV_SBI
+    "RISC-V SBI implementation"
+    "OpenSBI;KernelRiscvSBI_OpenSBI;RISCV_SBI_OPENSBI;KernelArchRiscV"
+    "none;KernelRiscvSBI_None;RISCV_SBI_NONE;KernelArchRiscV"
+    "ROM;KernelRiscvSBI_ROM;RISCV_SBI_ROM;KernelArchRiscV"
+    "BBL;KernelRiscvSBI_BBL;RISCV_SBI_BBL;KernelArchRiscV"
 )
 
 # Until RISC-V has instructions to count leading/trailing zeros, we provide
