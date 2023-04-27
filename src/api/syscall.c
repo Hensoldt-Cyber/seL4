@@ -639,8 +639,9 @@ void handleSyscall(syscall_t syscall)
             break;
         }
 
-        case SysNBSendWait:
-            ret = handleInvocation(false, false, true, true, getRegister(NODE_STATE(ksCurThread), replyRegister));
+        case SysNBSendWait: {
+            cptr_t dest = getRegister(NODE_STATE(ksCurThread), replyRegister);
+            ret = handleInvocation(false, false, true, true, dest);
             if (unlikely(ret != EXCEPTION_NONE)) {
                 mcsPreemptionPoint();
                 irq = getActiveIRQ();
@@ -651,6 +652,7 @@ void handleSyscall(syscall_t syscall)
             }
             handleRecv(true, false);
             break;
+        }
 #endif
         case SysNBRecv:
             handleRecv(false, true);
