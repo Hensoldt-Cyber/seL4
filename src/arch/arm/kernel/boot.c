@@ -34,7 +34,7 @@
  * spinning until the primary core has initialized all kernel structures and
  * then set it to 1.
  */
-BOOT_BSS static volatile int node_boot_lock;
+BOOT_BSS static int node_boot_lock;
 #endif /* ENABLE_SMP_SUPPORT */
 
 BOOT_BSS static region_t reserved[NUM_RESERVED_REGIONS];
@@ -263,8 +263,12 @@ BOOT_CODE static void init_plat(void)
 #ifdef ENABLE_SMP_SUPPORT
 BOOT_CODE static bool_t try_init_kernel_secondary_core(void)
 {
-    /* need to first wait until some kernel init has been done */
-    while (!node_boot_lock);
+    /* Busy wait for primary node to release secondary nodes. Using C11 atomics
+     * guarantees proper visibility across threads and cores.
+     */
+    while (0 == __atomic_load_n(&node_boot_lock, __ATOMIC_ACQUIRE)) {
+        /* keep spinning */
+    }
 
     /* Perform cpu init */
     init_cpu();
@@ -283,7 +287,7 @@ BOOT_CODE static bool_t try_init_kernel_secondary_core(void)
     NODE_LOCK_SYS;
 
     clock_sync_test();
-    ksNumCPUs++;
+    (void)__atomic_fetch_add(&ksNumCPUs, 1, __ATOMIC_ACQ_REL);
 
     init_core_state(SchedulerAction_ResumeCurrentThread);
 
@@ -292,9 +296,11 @@ BOOT_CODE static bool_t try_init_kernel_secondary_core(void)
 
 BOOT_CODE static void release_secondary_cpus(void)
 {
-    /* release the cpus at the same time */
+    /* Release all nodes at the same time. Update the lock in a way that ensures
+     * the result is visible everywhere.
+     */
     assert(0 == node_boot_lock); /* Sanity check for a proper lock state. */
-    node_boot_lock = 1;
+    __atomic_store_n(&node_boot_lock, 1, __ATOMIC_RELEASE);
 
     /*
      * At this point in time the primary core (executing this code) already uses
@@ -314,12 +320,14 @@ BOOT_CODE static void release_secondary_cpus(void)
 #endif
 
     /* Wait until all the secondary cores are done initialising */
-    while (ksNumCPUs != CONFIG_MAX_NUM_NODES) {
+    while (CONFIG_MAX_NUM_NODES != __atomic_load_n(&ksNumCPUs, __ATOMIC_ACQUIRE)) {
 #ifdef ENABLE_SMP_CLOCK_SYNC_TEST_ON_BOOT
+        /* Secondary cores compare their time with our primary core's time, so
+         * keep updating the timestamp while spinning.
+         */
         NODE_STATE(ksCurTime) = getCurrentTime();
+        __atomic_thread_fence(__ATOMIC_RELEASE); /* ensure write propagates */
 #endif
-        /* perform a memory acquire to get new values of ksNumCPUs, release for ksCurTime */
-        __atomic_thread_fence(__ATOMIC_ACQ_REL);
     }
 }
 #endif /* ENABLE_SMP_SUPPORT */
@@ -607,7 +615,8 @@ static BOOT_CODE bool_t try_init_kernel(
         invalidateHypTLB();
     }
 
-    ksNumCPUs = 1;
+    /* primary node is avaialble */
+    __atomic_store_n(&ksNumCPUs, 1, __ATOMIC_RELEASE);
 
     /* initialize BKL before booting up other cores */
     SMP_COND_STATEMENT(clh_lock_init());
