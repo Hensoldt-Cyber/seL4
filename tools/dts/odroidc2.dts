@@ -34,9 +34,9 @@
 			no-map;
 		};
 
-        /* 3 MiB reserved for ATF and TrustZone OS */
+        /* 35 MiB reserved for ATF and TrustZone OS */
 		secmon@5000000 {
-			reg = < 0x00 0x5000000 0x00 0x300000 >;
+			reg = < 0x00 0x5000000 0x00 0x2300000 >;
 			no-map;
 		};
 
