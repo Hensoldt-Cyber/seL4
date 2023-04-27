@@ -26,8 +26,8 @@
  * spinning until the primary core has initialized all kernel structures and
  * then set it to 1.
  */
-BOOT_BSS static volatile word_t node_boot_lock;
-#endif
+BOOT_BSS static int node_boot_lock;
+#endif /* ENABLE_SMP_SUPPORT */
 
 BOOT_BSS static region_t res_reg[NUM_RESERVED_REGIONS];
 
@@ -157,7 +157,15 @@ BOOT_CODE static void init_plat(void)
 #ifdef ENABLE_SMP_SUPPORT
 BOOT_CODE static bool_t try_init_kernel_secondary_core(word_t hart_id, word_t core_id)
 {
-    while (!node_boot_lock);
+    /* Busy wait for primary node to release secondary nodes. While practically
+     * sufficient in most cases, the volatile keyword of node_boot_lock does not
+     * make any guarantees about the visibility of a variable's value across
+     * different threads (and cores). Such guarantees are given only when using
+     * he memory model aware operations.
+     */
+    while (0 == __atomic_load_n(&node_boot_lock, __ATOMIC_ACQUIRE)) {
+        /* keep spinning */
+    }
 
     fence_r_rw();
 
@@ -165,7 +173,7 @@ BOOT_CODE static bool_t try_init_kernel_secondary_core(word_t hart_id, word_t co
     NODE_LOCK_SYS;
 
     clock_sync_test();
-    ksNumCPUs++;
+    (void)__atomic_fetch_add(&ksNumCPUs, 1, __ATOMIC_ACQ_REL);
     init_core_state(SchedulerAction_ResumeCurrentThread);
     ifence_local();
     return true;
@@ -173,21 +181,33 @@ BOOT_CODE static bool_t try_init_kernel_secondary_core(word_t hart_id, word_t co
 
 BOOT_CODE static void release_secondary_cores(void)
 {
+    /* Release all nodes at the same time. Update the lock in a way that ensures
+     * the result is visible everywhere.
+     */
     assert(0 == node_boot_lock); /* Sanity check for a proper lock state. */
-    node_boot_lock = 1;
+    __atomic_store_n(&node_boot_lock, 1, __ATOMIC_RELEASE);
+
     /* At this point in time the primary core (executing this code) already uses
      * the seL4 MMU/cache setup. However, the secondary cores are still using
      * the elfloader's MMU/cache setup, and thus the update of node_boot_lock
      * may not be visible there if the setups differ. Currently, the mappings
-     * match, so a barrier is all that is needed.
+     * match, so __atomic_store_n() should be sufficient. It generates the
+     * assembler sequence
+     *     fence      iorw,ow
+     *     amoswap.w  zero,a5,(a3)   // a5 = 1, a3 = &node_boot_lock
+     * that ensure the write really happens and becomes globally visible to make
+     * the secondary harts boot before we start the polling loop that checks
+     * ksNumCPUs to determine when all nodes are up. Having another explicit
+     * barrier should no longer be necessary.
      */
     fence_rw_rw();
 
-    while (ksNumCPUs != CONFIG_MAX_NUM_NODES) {
+    /* Keep spinning until all secondary nodes are up */
+    while (CONFIG_MAX_NUM_NODES != __atomic_load_n(&ksNumCPUs,
+                                                   __ATOMIC_ACQUIRE)) {
 #ifdef ENABLE_SMP_CLOCK_SYNC_TEST_ON_BOOT
         NODE_STATE(ksCurTime) = getCurrentTime();
 #endif
-        __atomic_thread_fence(__ATOMIC_ACQ_REL);
     }
 }
 #endif /* ENABLE_SMP_SUPPORT */
@@ -447,7 +467,8 @@ static BOOT_CODE bool_t try_init_kernel(
     /* finalise the bootinfo frame */
     bi_finalise();
 
-    ksNumCPUs = 1;
+    /* primary node is avaialble */
+    __atomic_store_n(&ksNumCPUs, 1, __ATOMIC_RELEASE);
 
     SMP_COND_STATEMENT(clh_lock_init());
     SMP_COND_STATEMENT(release_secondary_cores());
