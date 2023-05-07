@@ -29,8 +29,11 @@
 #endif
 
 #ifdef ENABLE_SMP_SUPPORT
-/* sync variable to prevent other nodes from booting
- * until kernel data structures initialized */
+/* SMP boot synchronization works based on a global variable with the initial
+ * value 0, as the loader must zero all BSS variables. Secondary cores keep
+ * spinning until the primary core has initialized all kernel structures and
+ * then set it to 1.
+ */
 BOOT_BSS static volatile int node_boot_lock;
 #endif /* ENABLE_SMP_SUPPORT */
 
@@ -252,15 +255,13 @@ BOOT_CODE static void init_plat(void)
 #ifdef ENABLE_SMP_SUPPORT
 BOOT_CODE static bool_t try_init_kernel_secondary_core(void)
 {
-    unsigned i;
-
     /* need to first wait until some kernel init has been done */
     while (!node_boot_lock);
 
     /* Perform cpu init */
     init_cpu();
 
-    for (i = 0; i < NUM_PPI; i++) {
+    for (unsigned int i = 0; i < NUM_PPI; i++) {
         maskInterrupt(true, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), i));
     }
     setIRQState(IRQIPI, CORE_IRQ_TO_IRQT(getCurrentCPUIndex(), irq_remote_call_ipi));
@@ -284,6 +285,7 @@ BOOT_CODE static bool_t try_init_kernel_secondary_core(void)
 BOOT_CODE static void release_secondary_cpus(void)
 {
     /* release the cpus at the same time */
+    assert(0 == node_boot_lock); /* Sanity check for a proper lock state. */
     node_boot_lock = 1;
 
     /*
