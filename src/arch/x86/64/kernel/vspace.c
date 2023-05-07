@@ -75,7 +75,7 @@ BOOT_CODE bool_t map_kernel_window(
     /* put the 1GB kernel_base mapping into the PDPT */
     x64KSKernelPDPT[GET_PDPT_INDEX(KERNEL_ELF_BASE)] = pdpte_pdpte_1g_new(
                                                            0, /* xd */
-                                                           PADDR_BASE,
+                                                           physBase(),
                                                            0, /* PAT */
                                                            KERNEL_IS_GLOBAL(), /* global */
                                                            0, /* dirty */

@@ -84,7 +84,7 @@ PHYS_CODE VISIBLE void init_boot_pd(void)
     /* mapping of PPTR_BASE (virtual address) to PADDR_BASE up to end of virtual address space */
     for (i = 0; i < ((-PPTR_BASE) >> seL4_LargePageBits); i++) {
         *(_boot_pd + i + (PPTR_BASE >> seL4_LargePageBits)) = pde_pde_large_new_phys(
-                                                                  (i << seL4_LargePageBits) + PADDR_BASE, /* physical address */
+                                                                  (i << seL4_LargePageBits) + physBase(), /* physical address */
                                                                   0, /* pat            */
                                                                   0, /* avl            */
                                                                   1, /* global         */

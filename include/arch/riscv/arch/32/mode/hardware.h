@@ -29,10 +29,6 @@
 /* last accessible virtual address in user space */
 #define USER_TOP seL4_UserTop
 
-/* The first physical address to map into the kernel's physical memory
- * window */
-#define PADDR_BASE physBase()
-
 /* The base address in virtual memory to use for the 1:1 physical memory
  * mapping */
 #define PPTR_BASE seL4_UserTop
@@ -51,9 +47,10 @@
  * This represents the physical address that the kernel image will be linked to. This needs to
  * be on a 1gb boundary as we currently require being able to creating a mapping to this address
  * as the largest frame size */
-#define KERNEL_ELF_PADDR_BASE UL_CONST(0x84000000)
+#define KERNEL_ELF_PADDR_OFFSET UL_CONST(0x4000000)
+#define KERNEL_ELF_PADDR_BASE (physBase() + KERNEL_ELF_PADDR_OFFSET)
 /* For use by the linker (only integer constants allowed) */
-#define KERNEL_ELF_PADDR_BASE_RAW KERNEL_ELF_PADDR_BASE
+#define KERNEL_ELF_PADDR_BASE_RAW (PHYS_BASE_RAW + KERNEL_ELF_PADDR_OFFSET)
 
 /* The base address in virtual memory to use for the kernel ELF mapping */
 #define KERNEL_ELF_BASE UL_CONST(0xFF800000)

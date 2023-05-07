@@ -43,10 +43,6 @@
 /* The mask here, 0xFFC00000 represents the mask for a 4MiB page. */
 #define USER_TOP (PPTR_BASE & UL_CONST(0xFFC00000))
 
-/* The first physical address to map into the kernel's physical memory
- * window */
-#define PADDR_BASE UL_CONST(0x00000000)
-
 /* The base address in virtual memory to use for the 1:1 physical memory
  * mapping */
 #define PPTR_BASE UL_CONST(0xe0000000)
