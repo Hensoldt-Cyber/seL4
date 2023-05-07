@@ -215,12 +215,11 @@ BOOT_CODE static bool_t init_cpu(void)
     }
 
 #ifdef CONFIG_HAVE_FPU
-    if (haveHWFPU) {
-        if (!fpsimd_init()) {
-            return false;
-        }
-    } else {
+    if (!haveHWFPU) {
         printf("Platform claims to have FP hardware, but does not!\n");
+        return false;
+    }
+    if (!fpsimd_init()) {
         return false;
     }
 #endif /* CONFIG_HAVE_FPU */
@@ -437,6 +436,7 @@ static BOOT_CODE bool_t try_init_kernel(
     /* initialise the SMMU and provide the SMMU control caps*/
     init_smmu(root_cnode_cap);
 #endif
+
     populate_bi_frame(0, CONFIG_MAX_NUM_NODES, ipcbuf_vptr, extra_bi_size);
 
     /* put DTB in the bootinfo block, if present. */
@@ -460,14 +460,12 @@ static BOOT_CODE bool_t try_init_kernel(
     }
 
     if (config_set(CONFIG_TK1_SMMU)) {
-        ndks_boot.bi_frame->ioSpaceCaps = create_iospace_caps(root_cnode_cap);
-        if (ndks_boot.bi_frame->ioSpaceCaps.start == 0 &&
-            ndks_boot.bi_frame->ioSpaceCaps.end == 0) {
+        seL4_SlotRegion reg = create_iospace_caps(root_cnode_cap);
+        if ((reg.start == 0) && (reg.end == 0)) {
             printf("ERROR: SMMU I/O space creation failed\n");
             return false;
         }
-    } else {
-        ndks_boot.bi_frame->ioSpaceCaps = S_REG_EMPTY;
+        ndks_boot.bi_frame->ioSpaceCaps = reg;
     }
 
     /* Construct an initial address space with enough virtual addresses
@@ -580,9 +578,6 @@ static BOOT_CODE bool_t try_init_kernel(
         printf("ERROR: could not create untypteds for kernel image boot memory\n");
         return false;
     }
-
-    /* no shared-frame caps (ARM has no multikernel support) */
-    ndks_boot.bi_frame->sharedFrames = S_REG_EMPTY;
 
     /* finalise the bootinfo frame */
     bi_finalise();

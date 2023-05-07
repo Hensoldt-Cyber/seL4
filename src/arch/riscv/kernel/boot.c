@@ -435,9 +435,6 @@ static BOOT_CODE bool_t try_init_kernel(
         return false;
     }
 
-    /* no shared-frame caps (RISC-V has no multikernel support) */
-    ndks_boot.bi_frame->sharedFrames = S_REG_EMPTY;
-
     /* finalise the bootinfo frame */
     bi_finalise();
 
