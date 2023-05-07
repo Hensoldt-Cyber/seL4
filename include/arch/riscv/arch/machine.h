@@ -71,6 +71,10 @@ static inline void fence_rw_rw(void)
     asm volatile("fence rw, rw" ::: "memory");
 }
 
+static inline void ipi_mem_barrier(void) {
+    fence_rw_rw();
+}
+
 static inline void fence_w_rw(void)
 {
     asm volatile("fence w, rw" ::: "memory");
@@ -219,6 +223,28 @@ static inline void clear_sie_mask(word_t mask)
 {
     word_t temp;
     asm volatile("csrrc %0, sie, %1" : "=r"(temp) : "rK"(mask));
+}
+
+static inline word_t read_sscratch(void)
+{
+    word_t temp;
+    asm volatile("csrr %0, sscratch" : "=r"(temp));
+    return temp;
+}
+
+static inline void write_sscratch(word_t value)
+{
+    asm volatile("csrw sscratch, %0" :: "r"(value));
+}
+
+static inline void write_sepc(word_t value)
+{
+    asm volatile("csrw sepc, %0" :: "r"(value));
+}
+
+static inline void write_sstatus(word_t value)
+{
+    asm volatile("csrw sstatus, %0" :: "r"(value));
 }
 
 #ifdef CONFIG_HAVE_FPU
