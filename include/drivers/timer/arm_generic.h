@@ -30,8 +30,10 @@ static inline void setDeadline(ticks_t deadline)
 
 static inline void ackDeadlineIRQ(void)
 {
-    ticks_t deadline = UINT64_MAX;
-    setDeadline(deadline);
+    /* Instead of disabling or masking the timer, we set the new value to the
+     * max, so it triggers in the far future.
+     */
+    setDeadline(UINT64_MAX);
     /* Ensure that the timer deasserts the IRQ before GIC EOIR/DIR.
      * This is sufficient to remove the pending state from the GICR
      * and avoid the interrupt happening twice because of the level
