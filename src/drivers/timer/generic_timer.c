@@ -24,7 +24,7 @@ BOOT_CODE void initGenericTimer(void)
     }
 
 #ifdef CONFIG_KERNEL_MCS
-    /* this sets the irq to UINT64_MAX */
+    /* this masks the interrupt */
     ackDeadlineIRQ();
 #else /* CONFIG_KERNEL_MCS */
     resetTimer();
