@@ -112,8 +112,8 @@ BOOT_CODE VISIBLE void map_kernel_window(void)
     /* kernel window starts at PPTR_BASE */
     word_t pptr = PPTR_BASE;
 
-    /* first we map in memory from PADDR_BASE */
-    word_t paddr = PADDR_BASE;
+    /* first we map in memory from physBase() */
+    word_t paddr = physBase();
     while (pptr < PPTR_TOP) {
         assert(IS_ALIGNED(pptr, RISCV_GET_LVL_PGSIZE_BITS(0)));
         assert(IS_ALIGNED(paddr, RISCV_GET_LVL_PGSIZE_BITS(0)));
