@@ -26,8 +26,9 @@
  * spinning until the primary core has initialized all kernel structures and
  * then set it to 1.
  */
-BOOT_BSS static volatile word_t node_boot_lock;
-#endif
+BOOT_BSS static int node_boot_lock;
+BOOT_BSS static word_t node_boot_mask;
+#endif /* ENABLE_SMP_SUPPORT */
 
 BOOT_BSS static region_t res_reg[NUM_RESERVED_REGIONS];
 
@@ -153,41 +154,116 @@ BOOT_CODE static void init_plat(void)
 
 
 #ifdef ENABLE_SMP_SUPPORT
+
+BOOT_CODE static void wait_for_lock_update(word_t new_val)
+{
+    for(;;) {
+        word_t v = __atomic_load_n(&node_boot_lock, __ATOMIC_ACQUIRE);
+        if (v == new_val) {
+            return;
+        }
+        assert(v < new_val);
+    }
+}
+
 BOOT_CODE static bool_t try_init_kernel_secondary_core(word_t hart_id, word_t core_id)
 {
-    while (!node_boot_lock);
+    /* Busy wait for primary node to release secondary nodes. Using C11 atomics
+     * guarantees proper visibility across threads and cores.
+     */
+    wait_for_lock_update(1);
 
-    fence_r_rw();
+    fence_r_rw(); /* ToDo: is this still necessary? */
 
     init_cpu();
+
+    /* intialize kernel on secondary nodes */
     NODE_LOCK_SYS;
 
     clock_sync_test();
-    ksNumCPUs++;
+    printf("core #%d (hart_id #%d) init\n", (int)core_id, (int)hart_id);
     init_core_state(SchedulerAction_ResumeCurrentThread);
+    NODE_UNLOCK;
+    /* Set BIT(core_id - 1) in node_boot_mask to tell primary node that init on
+     * this node is done
+     */
+    (void)__atomic_fetch_or(&node_boot_mask, BIT(core_id - 1), __ATOMIC_ACQ_REL);
+
     ifence_local();
+
+     /* Busy wait (again) for primary node to ack SMP init and release secondary
+      * the nodes. */
+    wait_for_lock_update(2);
+
     return true;
 }
 
 BOOT_CODE static void release_secondary_cores(void)
 {
+    /* Release all nodes at the same time. Update the lock in a way that ensures
+     * the result is visible everywhere.
+     */
     assert(0 == node_boot_lock); /* Sanity check for a proper lock state. */
-    node_boot_lock = 1;
+    __atomic_store_n(&node_boot_lock, 1, __ATOMIC_RELEASE);
+
     /* At this point in time the primary core (executing this code) already uses
      * the seL4 MMU/cache setup. However, the secondary cores are still using
      * the elfloader's MMU/cache setup, and thus the update of node_boot_lock
      * may not be visible there if the setups differ. Currently, the mappings
-     * match, so a barrier is all that is needed.
+     * match, so __atomic_store_n() should be sufficient. It generates the
+     * assembler sequence
+     *     fence      iorw,ow
+     *     amoswap.w  zero,a5,(a3)   // a5 = 1, a3 = &node_boot_lock
+     * that ensure the write really happens and becomes globally visible to make
+     * the secondary harts boot before we start the polling loop that checks
+     * ksNumCPUs to determine when all nodes are up. Having another explicit
+     * barrier should no longer be necessary.
      */
     fence_rw_rw();
 
-    while (ksNumCPUs != CONFIG_MAX_NUM_NODES) {
+    /* Wait until all the secondary cores are done initialising, ie the bit for
+     * each core is set. Each core has a bit, so missing bits in the mask
+     * indicate which core failed to start.
+     */
+    word_t missing_nodes = BIT(CONFIG_MAX_NUM_NODES - 1) - 1;
+    word_t ready_order[CONFIG_MAX_NUM_NODES - 1][2] = {0};
+    int idx = 0;
+    do {
 #ifdef ENABLE_SMP_CLOCK_SYNC_TEST_ON_BOOT
+        /* Secondary cores compare their time with our primary core's time, so
+         * keep updating the timestamp while spinning.
+         */
         NODE_STATE(ksCurTime) = getCurrentTime();
+        __atomic_thread_fence(__ATOMIC_RELEASE); /* ensure write propagates */
 #endif
-        __atomic_thread_fence(__ATOMIC_ACQ_REL);
+
+        word_t mask = __atomic_load_n(&node_boot_mask, __ATOMIC_ACQUIRE);
+        // mask = 0100
+        word_t new_cores_ready = missing_nodes & mask;
+        // new_cores_ready = 1110 & 0100 = 0100
+        while (new_cores_ready > 0) {
+            unsigned int core_bit = wordBits - 1 - clzl(new_cores_ready);
+            new_cores_ready &= ~BIT(core_bit);
+            ready_order[idx][0] = riscv_read_cycle();
+            ready_order[idx][1] = core_bit;
+            idx++;
+        }
+        missing_nodes &= ~mask;
+    } while ( != missing_nodes > 0);
+
+    for (int i = 0; i < ARRAY_SIZE(ready_order); i++) {
+        printf("[%"SEL4_PRIu_word"] core #%d up\n",
+               ready_order[i][0], (int)ready_order[i][1] + 1);
     }
 }
+
+
+BOOT_CODE static void release_secondary_cores_to_userland(void)
+{
+    assert(1 == node_boot_lock);
+    __atomic_store_n(&node_boot_lock, 2, __ATOMIC_RELEASE);
+}
+
 #endif /* ENABLE_SMP_SUPPORT */
 
 /* Main kernel initialisation function. */
@@ -439,19 +515,26 @@ static BOOT_CODE bool_t try_init_kernel(
     /* finalise the bootinfo frame */
     bi_finalise();
 
-    ksNumCPUs = 1;
+    /* primary node is avaialble */
+    __atomic_store_n(&ksNumCPUs, 1, __ATOMIC_RELEASE);
 
     SMP_COND_STATEMENT(clh_lock_init());
     SMP_COND_STATEMENT(release_secondary_cores());
 
-    /* All cores are up now, so there can be concurrency. The kernel booting is
+    /* All cores have finished booting now and wait to be released again to exit
+     * to userland. Grabing the BKL no is not really needed as there is no
+     * concurrency here. . needed for SMK init finalization  are up now, so there can be concurrency. The kernel booting is
      * supposed to be finished before the secondary cores are released, all the
      * primary has to do now is schedule the initial thread. Currently there is
      * nothing that touches any global data structures, nevertheless we grab the
      * BKL here to play safe. It is released when the kernel is left. */
     NODE_LOCK_SYS;
-
+    ksNumCPUs = CONFIG_MAX_NUM_NODES;
     printf("Booting all finished, dropped to user space\n");
+    NODE_UNLOCK;
+
+    SMP_COND_STATEMENT(release_secondary_cores_to_userland());
+
     return true;
 }
 

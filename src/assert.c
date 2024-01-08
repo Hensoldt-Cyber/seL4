@@ -10,18 +10,19 @@
 #ifdef CONFIG_DEBUG_BUILD
 
 void _fail(
-    const char  *s,
     const char  *file,
     unsigned int line,
-    const char  *function)
+    const char  *function,
+    const char  *s,
+    ...)
 {
-    printf(
-        "seL4 called fail at %s:%u in function %s, saying \"%s\"\n",
-        file,
-        line,
-        function,
-        s
-    );
+    va_list args;
+    printf("seL4 called fail at %s:%u in function %s, saying \"",
+           file, line, function);
+    va_start(args, s);
+    vprintf(s, args);
+    va_end(args);
+    printf("\"\n");
     halt();
 }
 

@@ -139,7 +139,7 @@ void generic_ipi_send_mask(irq_t ipi, word_t mask, bool_t isBlocking)
 
     if (nr_target_cores > 0) {
         /* sending IPIs... */
-        IPI_MEM_BARRIER;
+        ipi_mem_barrier();
         for (int i = 0; i < nr_target_cores; i++) {
             ipi_send_target(ipi, cpuIndexToID(target_cores[i]));
         }
@@ -147,7 +147,7 @@ void generic_ipi_send_mask(irq_t ipi, word_t mask, bool_t isBlocking)
 }
 
 #ifdef CONFIG_DEBUG_BUILD
-exception_t handle_SysDebugSendIPI(void)
+void handle_SysDebugSendIPI(void)
 {
 #ifdef CONFIG_ARCH_ARM
     word_t target = getRegister(NODE_STATE(ksCurThread), capRegister);
@@ -155,16 +155,19 @@ exception_t handle_SysDebugSendIPI(void)
     if (target > CONFIG_MAX_NUM_NODES) {
         userError("SysDebugSendIPI: Invalid target, halting");
         halt();
+        UNREACHABLE();
     }
     if (irq > 15) {
         userError("SysDebugSendIPI: Invalid IRQ, not a SGI, halting");
         halt();
+        UNREACHABLE();
     }
     ipi_send_target(CORE_IRQ_TO_IRQT(0, irq), BIT(target));
-    return EXCEPTION_NONE;
+    return;
 #else /* not CONFIG_ARCH_ARM */
     userError("SysDebugSendIPI: not supported on this architecture");
     halt();
+    UNREACHABLE();
 #endif  /* [not] CONFIG_ARCH_ARM */
 }
 #endif /* CONFIG_DEBUG_BUILD */

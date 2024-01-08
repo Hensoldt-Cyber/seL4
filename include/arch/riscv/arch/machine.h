@@ -71,6 +71,10 @@ static inline void fence_rw_rw(void)
     asm volatile("fence rw, rw" ::: "memory");
 }
 
+static inline void ipi_mem_barrier(void) {
+    fence_rw_rw();
+}
+
 static inline void fence_w_rw(void)
 {
     asm volatile("fence w, rw" ::: "memory");

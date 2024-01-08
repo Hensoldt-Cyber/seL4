@@ -34,18 +34,15 @@
 /* The haskell function 'handleEvent' is split into 'handleXXX' variants
  * for each event causing a kernel entry */
 
-exception_t handleInterruptEntry(void)
+void handleInterruptEntry(void)
 {
-    irq_t irq;
-
 #ifdef CONFIG_KERNEL_MCS
     if (SMP_TERNARY(clh_is_self_in_queue(), 1)) {
         updateTimestamp();
         checkBudget();
     }
 #endif
-
-    irq = getActiveIRQ();
+    irq_t irq = getActiveIRQ();
     if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
         handleInterrupt(irq);
     } else {
@@ -63,103 +60,128 @@ exception_t handleInterruptEntry(void)
 #ifdef CONFIG_KERNEL_MCS
     }
 #endif
-
-    return EXCEPTION_NONE;
 }
 
-exception_t handleUnknownSyscall(word_t w)
+
+void handleUnknownSyscall(syscall_t syscall)
 {
+    switch (syscall)
+    {
+
 #ifdef CONFIG_PRINTING
-    if (w == SysDebugPutChar) {
-        kernel_putchar(getRegister(NODE_STATE(ksCurThread), capRegister));
-        return EXCEPTION_NONE;
+    case SysDebugPutChar: {
+        /* Debug printing is not coupled to CONFIG_DEBUG_BUILD, thus non-debug
+         * builds can also show status and error message.
+         */
+        char c = getRegister(NODE_STATE(ksCurThread), capRegister);
+        kernel_putchar(c);
+        return;
     }
-    if (w == SysDebugDumpScheduler) {
+#endif /* CONFIG_PRINTING */
+
 #ifdef CONFIG_DEBUG_BUILD
+
+    case SysDebugDumpScheduler:
+        /* Without CONFIG_PRINTING this syscall still exists, but it does
+         * nothing.
+         */
+#ifdef CONFIG_PRINTING
         debug_dumpScheduler();
-#endif
-        return EXCEPTION_NONE;
-    }
-#endif
-#ifdef CONFIG_DEBUG_BUILD
-    if (w == SysDebugHalt) {
+#endif /* CONFIG_PRINTING */
+        return;
+
+    case SysDebugHalt: {
         tcb_t *UNUSED tptr = NODE_STATE(ksCurThread);
-        printf("Debug halt syscall from user thread %p \"%s\"\n", tptr, TCB_PTR_DEBUG_PTR(tptr)->tcbName);
+        printf("Debug halt syscall from user thread %p \"%s\"\n",
+               tptr, TCB_PTR_DEBUG_PTR(tptr)->tcbName);
         halt();
+        UNREACHABLE();
     }
-    if (w == SysDebugSnapshot) {
+
+    case SysDebugSnapshot: {
         tcb_t *UNUSED tptr = NODE_STATE(ksCurThread);
         printf("Debug snapshot syscall from user thread %p \"%s\"\n",
                tptr, TCB_PTR_DEBUG_PTR(tptr)->tcbName);
         debug_capDL();
-        return EXCEPTION_NONE;
+        return;
     }
-    if (w == SysDebugCapIdentify) {
+
+    case SysDebugCapIdentify: {
         word_t cptr = getRegister(NODE_STATE(ksCurThread), capRegister);
         lookupCapAndSlot_ret_t lu_ret = lookupCapAndSlot(NODE_STATE(ksCurThread), cptr);
         word_t cap_type = cap_get_capType(lu_ret.cap);
         setRegister(NODE_STATE(ksCurThread), capRegister, cap_type);
-        return EXCEPTION_NONE;
+        return;
     }
 
-    if (w == SysDebugNameThread) {
+    case SysDebugNameThread: {
         /* This is a syscall meant to aid debugging, so if anything goes wrong
-         * then assume the system is completely misconfigured and halt */
-        const char *name;
-        word_t len;
+         * then assume the system is completely misconfigured and halt
+         */
         word_t cptr = getRegister(NODE_STATE(ksCurThread), capRegister);
         lookupCapAndSlot_ret_t lu_ret = lookupCapAndSlot(NODE_STATE(ksCurThread), cptr);
-        /* ensure we got a TCB cap */
         word_t cap_type = cap_get_capType(lu_ret.cap);
+
+        /* ensure we got a TCB cap */
         if (cap_type != cap_thread_cap) {
             userError("SysDebugNameThread: cap is not a TCB, halting");
             halt();
+            UNREACHABLE();
         }
-        /* Add 1 to the IPC buffer to skip the message info word */
-        name = (const char *)(lookupIPCBuffer(true, NODE_STATE(ksCurThread)) + 1);
-        if (!name) {
+        seL4_IPCBuffer *ipcBuffer = (seL4_IPCBuffer *)lookupIPCBuffer(true, NODE_STATE(ksCurThread));
+        if (!ipcBuffer) {
             userError("SysDebugNameThread: Failed to lookup IPC buffer, halting");
             halt();
+            UNREACHABLE();
         }
-        /* ensure the name isn't too long */
-        len = strnlen(name, seL4_MsgMaxLength * sizeof(word_t));
-        if (len == seL4_MsgMaxLength * sizeof(word_t)) {
-            userError("SysDebugNameThread: Name too long, halting");
+        const char *name = (const char *)(&ipcBuffer->msg);
+        const word_t max_len = seL4_MsgMaxLength * sizeof(word_t);
+        assert(max_len == sizeof(ipcBuffer->msg));
+        word_t len = strnlen(name, max_len);
+        if (len == max_len) {
+            userError("SysDebugNameThread: Name exceeds %"SEL4_PRIu_word" chars, halting",
+                      max_len - 1);
             halt();
+            UNREACHABLE();
         }
         setThreadName(TCB_PTR(cap_thread_cap_get_capTCBPtr(lu_ret.cap)), name);
-        return EXCEPTION_NONE;
+        return;
     }
+
 #ifdef ENABLE_SMP_SUPPORT
-    if (w == SysDebugSendIPI) {
-        return handle_SysDebugSendIPI();
+    case SysDebugSendIPI: {
+        handle_SysDebugSendIPI();
+        return;
     }
 #endif /* ENABLE_SMP_SUPPORT */
 #endif /* CONFIG_DEBUG_BUILD */
 
 #ifdef CONFIG_DANGEROUS_CODE_INJECTION
-    if (w == SysDebugRun) {
-        ((void (*)(void *))getRegister(NODE_STATE(ksCurThread), capRegister))((void *)getRegister(NODE_STATE(ksCurThread),
-                                                                                                  msgInfoRegister));
-        return EXCEPTION_NONE;
+    case SysDebugRun: {
+        /* This syscall can be enabled even on non-debug builds. */
+        typedef void (*func_ptr)(void * ctx);
+        func_ptr injected_func = (func_ptr)getRegister(NODE_STATE(ksCurThread), capRegister);
+        void *ctx = (void *)getRegister(NODE_STATE(ksCurThread), msgInfoRegister);
+        injected_func(ctx);
+        return;
     }
-#endif
+#endif /* CONFIG_DANGEROUS_CODE_INJECTION */
 
 #ifdef CONFIG_KERNEL_X86_DANGEROUS_MSR
-    if (w == SysX86DangerousWRMSR) {
-        uint64_t val;
+
+    case SysX86DangerousWRMSR: {
         uint32_t reg = getRegister(NODE_STATE(ksCurThread), capRegister);
-        if (CONFIG_WORD_SIZE == 32) {
-            val = (uint64_t)getSyscallArg(0, NULL) | ((uint64_t)getSyscallArg(1, NULL) << 32);
-        } else {
-            val = getSyscallArg(0, NULL);
+        uint64_t val = getSyscallArg(0, NULL);
+        if (CONFIG_WORD_SIZE == 64) {
+            val |= (uint64_t)getSyscallArg(1, NULL) << 32;
         }
         x86_wrmsr(reg, val);
-        return EXCEPTION_NONE;
-    } else if (w == SysX86DangerousRDMSR) {
-        uint64_t val;
+        return;
+    }
+
+    case SysX86DangerousRDMSR: {
         uint32_t reg = getRegister(NODE_STATE(ksCurThread), capRegister);
-        val = x86_rdmsr(reg);
+        uint64_t val = x86_rdmsr(reg);
         int num = 1;
         if (CONFIG_WORD_SIZE == 32) {
             setMR(NODE_STATE(ksCurThread), NULL, 0, val & 0xffffffff);
@@ -168,66 +190,89 @@ exception_t handleUnknownSyscall(word_t w)
         } else {
             setMR(NODE_STATE(ksCurThread), NULL, 0, val);
         }
-        setRegister(NODE_STATE(ksCurThread), msgInfoRegister, wordFromMessageInfo(seL4_MessageInfo_new(0, 0, 0, num)));
-        return EXCEPTION_NONE;
+        setRegister(NODE_STATE(ksCurThread), msgInfoRegister,
+                    wordFromMessageInfo(seL4_MessageInfo_new(0, 0, 0, num)));
+        return;
     }
-#endif
+
+#endif /* CONFIG_KERNEL_X86_DANGEROUS_MSR */
 
 #ifdef CONFIG_ENABLE_BENCHMARKS
-    switch (w) {
+
     case SysBenchmarkFlushCaches:
-        return handle_SysBenchmarkFlushCaches();
+        handle_SysBenchmarkFlushCaches();
+        return;
     case SysBenchmarkResetLog:
-        return handle_SysBenchmarkResetLog();
+        handle_SysBenchmarkResetLog();
+        return;
     case SysBenchmarkFinalizeLog:
-        return handle_SysBenchmarkFinalizeLog();
+        handle_SysBenchmarkFinalizeLog();
+        return;
 #ifdef CONFIG_KERNEL_LOG_BUFFER
     case SysBenchmarkSetLogBuffer:
-        return handle_SysBenchmarkSetLogBuffer();
+        handle_SysBenchmarkSetLogBuffer();
+        return;
 #endif /* CONFIG_KERNEL_LOG_BUFFER */
 #ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
     case SysBenchmarkGetThreadUtilisation:
-        return handle_SysBenchmarkGetThreadUtilisation();
+        handle_SysBenchmarkGetThreadUtilisation();
+        return;
     case SysBenchmarkResetThreadUtilisation:
-        return handle_SysBenchmarkResetThreadUtilisation();
+        handle_SysBenchmarkResetThreadUtilisation();
+        return;
 #ifdef CONFIG_DEBUG_BUILD
     case SysBenchmarkDumpAllThreadsUtilisation:
-        return handle_SysBenchmarkDumpAllThreadsUtilisation();
+        handle_SysBenchmarkDumpAllThreadsUtilisation();
+        return;
     case SysBenchmarkResetAllThreadsUtilisation:
-        return handle_SysBenchmarkResetAllThreadsUtilisation();
+        handle_SysBenchmarkResetAllThreadsUtilisation();
+        return;
 #endif /* CONFIG_DEBUG_BUILD */
 #endif /* CONFIG_BENCHMARK_TRACK_UTILISATION */
     case SysBenchmarkNullSyscall:
-        return EXCEPTION_NONE;
-    default:
-        break; /* syscall is not for benchmarking */
-    } /* end switch(w) */
+        return;
+
 #endif /* CONFIG_ENABLE_BENCHMARKS */
 
+    default:
+        /* No matching handler so far, continue below. */
+        break;
+
+    } // end switch (syscall)
+
     MCS_DO_IF_BUDGET({
-#ifdef CONFIG_SET_TLS_BASE_SELF
-        if (w == SysSetTLSBase)
+        switch (syscall)
         {
+
+#ifdef CONFIG_SET_TLS_BASE_SELF
+        case SysSetTLSBase: {
             word_t tls_base = getRegister(NODE_STATE(ksCurThread), capRegister);
-            /*
-             * This updates the real register as opposed to the thread state
+            /* This updates the real register as opposed to the thread state
              * value. For many architectures, the TLS variables only get
              * updated on a thread switch.
              */
-            return Arch_setTLSRegister(tls_base);
+            exception_t ret = Arch_setTLSRegister(tls_base);
+            if (unlikely(ret != EXCEPTION_NONE)) {
+                userError("could not set TLS register");
+                halt();
+                UNREACHABLE();
+            }
+            return;
         }
-#endif
-        current_fault = seL4_Fault_UnknownSyscall_new(w);
-        handleFault(NODE_STATE(ksCurThread));
+#endif /* CONFIG_SET_TLS_BASE_SELF */
+
+        default:
+            current_fault = seL4_Fault_UnknownSyscall_new(syscall);
+            handleFault(NODE_STATE(ksCurThread));
+
+        } // end switch (syscall)
     })
 
     schedule();
     activateThread();
-
-    return EXCEPTION_NONE;
 }
 
-exception_t handleUserLevelFault(word_t w_a, word_t w_b)
+void handleUserLevelFault(word_t w_a, word_t w_b)
 {
     MCS_DO_IF_BUDGET({
         current_fault = seL4_Fault_UserException_new(w_a, w_b);
@@ -235,11 +280,9 @@ exception_t handleUserLevelFault(word_t w_a, word_t w_b)
     })
     schedule();
     activateThread();
-
-    return EXCEPTION_NONE;
 }
 
-exception_t handleVMFaultEvent(vm_fault_type_t vm_faultType)
+void handleVMFaultEvent(vm_fault_type_t vm_faultType)
 {
     MCS_DO_IF_BUDGET({
 
@@ -252,8 +295,6 @@ exception_t handleVMFaultEvent(vm_fault_type_t vm_faultType)
 
     schedule();
     activateThread();
-
-    return EXCEPTION_NONE;
 }
 
 #ifdef CONFIG_KERNEL_MCS
@@ -262,38 +303,26 @@ static exception_t handleInvocation(bool_t isCall, bool_t isBlocking, bool_t can
 static exception_t handleInvocation(bool_t isCall, bool_t isBlocking)
 #endif
 {
-    seL4_MessageInfo_t info;
-    lookupCapAndSlot_ret_t lu_ret;
-    word_t *buffer;
     exception_t status;
-    word_t length;
-    tcb_t *thread;
-
-    thread = NODE_STATE(ksCurThread);
-
-    info = messageInfoFromWord(getRegister(thread, msgInfoRegister));
+    tcb_t *thread = NODE_STATE(ksCurThread);
 #ifndef CONFIG_KERNEL_MCS
     cptr_t cptr = getRegister(thread, capRegister);
 #endif
 
     /* faulting section */
-    lu_ret = lookupCapAndSlot(thread, cptr);
-
+    lookupCapAndSlot_ret_t lu_ret = lookupCapAndSlot(thread, cptr);
     if (unlikely(lu_ret.status != EXCEPTION_NONE)) {
-        userError("Invocation of invalid cap #%lu.", cptr);
+        userError("Invocation of invalid cap #%"SEL4_PRIu_word, cptr);
         current_fault = seL4_Fault_CapFault_new(cptr, false);
-
         if (isBlocking) {
             handleFault(thread);
         }
-
         return EXCEPTION_NONE;
     }
 
-    buffer = lookupIPCBuffer(false, thread);
-
+    word_t *buffer = lookupIPCBuffer(false, thread);
+    seL4_MessageInfo_t info = messageInfoFromWord(getRegister(thread, msgInfoRegister));
     status = lookupExtraCaps(thread, buffer, info);
-
     if (unlikely(status != EXCEPTION_NONE)) {
         userError("Lookup of extra caps failed.");
         if (isBlocking) {
@@ -303,21 +332,18 @@ static exception_t handleInvocation(bool_t isCall, bool_t isBlocking)
     }
 
     /* Syscall error/Preemptible section */
-    length = seL4_MessageInfo_get_length(info);
+    word_t length = seL4_MessageInfo_get_length(info);
     if (unlikely(length > n_msgRegisters && !buffer)) {
         length = n_msgRegisters;
     }
-#ifdef CONFIG_KERNEL_MCS
+
     status = decodeInvocation(seL4_MessageInfo_get_label(info), length,
                               cptr, lu_ret.slot, lu_ret.cap,
                               isBlocking, isCall,
-                              canDonate, firstPhase, buffer);
-#else
-    status = decodeInvocation(seL4_MessageInfo_get_label(info), length,
-                              cptr, lu_ret.slot, lu_ret.cap,
-                              isBlocking, isCall, buffer);
+#ifdef CONFIG_KERNEL_MCS
+                              canDonate, firstPhase,
 #endif
-
+                              buffer);
     if (unlikely(status == EXCEPTION_PREEMPTED)) {
         return status;
     }
@@ -470,9 +496,9 @@ static void handleRecv(bool_t isBlocking)
     }
 }
 
-#ifdef CONFIG_KERNEL_MCS
-static inline void mcsPreemptionPoint(void)
+static void checkPreemption(void)
 {
+#ifdef CONFIG_KERNEL_MCS
     /* at this point we could be handling a timer interrupt which actually ends the current
      * threads timeslice. However, preemption is possible on revoke, which could have deleted
      * the current thread and/or the current scheduling context, rendering them invalid. */
@@ -489,12 +515,13 @@ static inline void mcsPreemptionPoint(void)
          * then having cleared the SC. */
         NODE_STATE(ksConsumed) = 0;
     }
+#endif /* CONFIG_KERNEL_MCS */
+
+    irq_t irq = getActiveIRQ();
+    if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
+        handleInterrupt(irq);
+    }
 }
-#else
-#define handleRecv(isBlocking, canReply) handleRecv(isBlocking)
-#define mcsPreemptionPoint()
-#define handleInvocation(isCall, isBlocking, canDonate, firstPhase, cptr) handleInvocation(isCall, isBlocking)
-#endif
 
 static void handleYield(void)
 {
@@ -511,21 +538,21 @@ static void handleYield(void)
 #endif
 }
 
-exception_t handleSyscall(syscall_t syscall)
+#ifndef CONFIG_KERNEL_MCS
+#define handleRecv(isBlocking, canReply) handleRecv(isBlocking)
+#define handleInvocation(isCall, isBlocking, canDonate, firstPhase, cptr) handleInvocation(isCall, isBlocking)
+#endif
+
+void handleSyscall(syscall_t syscall)
 {
     exception_t ret;
-    irq_t irq;
     MCS_DO_IF_BUDGET({
         switch (syscall)
         {
         case SysSend:
             ret = handleInvocation(false, true, false, false, getRegister(NODE_STATE(ksCurThread), capRegister));
             if (unlikely(ret != EXCEPTION_NONE)) {
-                mcsPreemptionPoint();
-                irq = getActiveIRQ();
-                if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
-                    handleInterrupt(irq);
-                }
+                checkPreemption();
             }
 
             break;
@@ -533,22 +560,14 @@ exception_t handleSyscall(syscall_t syscall)
         case SysNBSend:
             ret = handleInvocation(false, false, false, false, getRegister(NODE_STATE(ksCurThread), capRegister));
             if (unlikely(ret != EXCEPTION_NONE)) {
-                mcsPreemptionPoint();
-                irq = getActiveIRQ();
-                if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
-                    handleInterrupt(irq);
-                }
+                checkPreemption();
             }
             break;
 
         case SysCall:
             ret = handleInvocation(true, true, true, false, getRegister(NODE_STATE(ksCurThread), capRegister));
             if (unlikely(ret != EXCEPTION_NONE)) {
-                mcsPreemptionPoint();
-                irq = getActiveIRQ();
-                if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
-                    handleInterrupt(irq);
-                }
+                checkPreemption();
             }
             break;
 
@@ -573,6 +592,7 @@ exception_t handleSyscall(syscall_t syscall)
         case SysNBWait:
             handleRecv(false, false);
             break;
+
         case SysReplyRecv: {
             cptr_t reply = getRegister(NODE_STATE(ksCurThread), replyRegister);
             ret = handleInvocation(false, false, true, true, reply);
@@ -586,29 +606,23 @@ exception_t handleSyscall(syscall_t syscall)
             cptr_t dest = getNBSendRecvDest();
             ret = handleInvocation(false, false, true, true, dest);
             if (unlikely(ret != EXCEPTION_NONE)) {
-                mcsPreemptionPoint();
-                irq = getActiveIRQ();
-                if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
-                    handleInterrupt(irq);
-                }
+                checkPreemption();
                 break;
             }
             handleRecv(true, true);
             break;
         }
 
-        case SysNBSendWait:
-            ret = handleInvocation(false, false, true, true, getRegister(NODE_STATE(ksCurThread), replyRegister));
+        case SysNBSendWait: {
+            cptr_t dest = getRegister(NODE_STATE(ksCurThread), replyRegister);
+            ret = handleInvocation(false, false, true, true, dest);
             if (unlikely(ret != EXCEPTION_NONE)) {
-                mcsPreemptionPoint();
-                irq = getActiveIRQ();
-                if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
-                    handleInterrupt(irq);
-                }
+                checkPreemption();
                 break;
             }
             handleRecv(true, false);
             break;
+        }
 #endif
         case SysNBRecv:
             handleRecv(false, true);
@@ -619,13 +633,11 @@ exception_t handleSyscall(syscall_t syscall)
             break;
 
         default:
-            fail("Invalid syscall");
+            fail("Invalid syscall %"SEL4_PRIu_word, syscall);
         }
 
     })
 
     schedule();
     activateThread();
-
-    return EXCEPTION_NONE;
 }
